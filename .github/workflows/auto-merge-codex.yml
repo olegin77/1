@@ -1,9 +1,13 @@
-name: Auto-merge codex → main
+name: Auto-merge codex → main (light)
 
 on:
   push:
     branches: [ codex ]
   workflow_dispatch:
+
+concurrency:
+  group: automerge-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -15,10 +19,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
 
       - name: Create/Update PR & enable auto-merge
-        env: { GH_TOKEN: ${{ github.token }} }
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           PR_NUM=$(gh pr list --base main --head codex --json number --jq '.[0].number' || true)
