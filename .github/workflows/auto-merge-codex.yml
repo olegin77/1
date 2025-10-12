@@ -1,0 +1,52 @@
+name: Auto-merge codex -> main
+
+on:
+  push:
+    branches: [ codex ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pr-automerge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show gh version
+        env: { GH_TOKEN: ${{ github.token }} }
+        run: gh --version
+
+      - name: Create/Update PR and enable auto-merge
+        env: { GH_TOKEN: ${{ github.token }} }
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Найти существующий PR codex -> main (если есть)
+          PR_NUMBER=$(gh pr list --base main --head codex --json number --jq '.[0].number' || true)
+
+          # Если PR нет — создать
+          if [ -z "${PR_NUMBER:-}" ] || [ "${PR_NUMBER}" = "null" ]; then
+            gh pr create \
+              --base main \
+              --head codex \
+              --title "Auto: codex → main" \
+              --body  "Automated PR created by workflow on push to 'codex'."
+            PR_NUMBER=$(gh pr list --base main --head codex --json number --jq '.[0].number')
+            echo "Created PR #${PR_NUMBER}"
+          else
+            echo "PR already exists: #${PR_NUMBER}"
+          fi
+
+          # Добавим метку и включим авто-мердж (squash)
+          gh pr edit  "${PR_NUMBER}" --add-label "auto"
+          gh pr merge "${PR_NUMBER}" --auto --squash
+
+      - name: Summary
+        run: echo "Auto-merge is enabled for PR from 'codex' to 'main'."
