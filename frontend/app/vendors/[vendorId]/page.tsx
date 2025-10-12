@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { findVendorById } from "../data";
 
-type PageProps = {
+type VendorPageProps = {
   params: {
     vendorId: string;
   };
@@ -11,8 +11,9 @@ type PageProps = {
 
 export async function generateMetadata({
   params
-}: PageProps): Promise<Metadata> {
+}: VendorPageProps): Promise<Metadata> {
   const vendor = findVendorById(params.vendorId);
+
   if (!vendor) {
     return {
       title: "Поставщик не найден — WeddingTech"
@@ -20,131 +21,169 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${vendor.name} — WeddingTech`,
-    description: `${vendor.category} в ${vendor.city}. Средний ответ ${vendor.responseTimeHours} ч.`
+    title: `${vendor.name} — ${vendor.category} · WeddingTech`,
+    description: `Профиль поставщика ${vendor.name} (${vendor.city}). Рейтинг ${vendor.rating.toFixed(1)}. Стоимость от ${vendor.priceFrom.toLocaleString("ru-RU")} ${vendor.currency}. Средний ответ ${vendor.responseTimeHours} ч.`
   };
 }
 
-export default async function VendorProfile({ params }: PageProps) {
-  const vendor = findVendorById(params.vendorId);
-  if (!vendor) {
-    notFound();
-  }
+export default async function VendorDetailPage({
+  params
+}: VendorPageProps) {
+  const vendor = findVendorById(params.vendorId) ?? notFound();
 
   return (
-    <main className="vendor-profile">
-      <nav className="vendor-profile__breadcrumbs" aria-label="Навигация">
+    <main className="vendor-detail">
+      <nav className="vendor-detail__breadcrumbs" aria-label="Навигация">
         <Link href="/vendors" prefetch={false}>
           ← Назад к каталогу
         </Link>
       </nav>
 
-      <header className="vendor-profile__header">
-        <p className="vendor-profile__tag">{vendor.category}</p>
+      <header className="vendor-detail__header">
+        <span className="vendor-detail__eyebrow">{vendor.category}</span>
         <h1>{vendor.name}</h1>
-        <p className="vendor-profile__meta">
-          {vendor.city} · {vendor.rating.toFixed(1)}★ · от{" "}
-          {vendor.priceFrom.toLocaleString("ru-RU")} {vendor.currency}
+        <p className="vendor-detail__meta">
+          {vendor.city} · рейтинг {vendor.rating.toFixed(1)}★ ·{" "}
+          от {vendor.priceFrom.toLocaleString("ru-RU")} {vendor.currency} ·{" "}
+          ответ {vendor.responseTimeHours} ч
         </p>
       </header>
 
-      <section className="vendor-profile__section">
-        <h2>Что входит</h2>
+      <section className="vendor-detail__section">
+        <h2>Основные преимущества</h2>
         <ul>
-          {vendor.highlights.map((item) => (
-            <li key={item}>{item}</li>
+          {vendor.highlights.map((highlight) => (
+            <li key={highlight}>{highlight}</li>
           ))}
         </ul>
       </section>
 
-      <section className="vendor-profile__section vendor-profile__cta">
-        <div>
-          <h2>Проверить дату</h2>
-          <p>
-            Мы запросим подтверждение и отправим вам ответ в течение{" "}
-            {vendor.responseTimeHours} часов.
-          </p>
-        </div>
+      <section className="vendor-detail__cta">
         <Link href={`/planner?vendor=${vendor.id}`} prefetch={false}>
-          Добавить в план
+          Планировать с этим поставщиком
+        </Link>
+        <Link href="/vendors" prefetch={false}>
+          Вернуться к каталогу
         </Link>
       </section>
 
+      <section className="vendor-detail__note">
+        <p>
+          После согласования деталей переведите статус сделки в{" "}
+          <strong>CONTRACT_SIGNED</strong>, чтобы включить ROI-триггеры и сбор
+          отзывов пары.
+        </p>
+      </section>
+
       <style jsx>{`
-        .vendor-profile {
+        .vendor-detail {
           display: grid;
           gap: 32px;
           padding: 48px 32px;
+          max-width: 960px;
+          margin: 0 auto;
         }
 
-        .vendor-profile__breadcrumbs a {
+        .vendor-detail__header {
+          display: grid;
+          gap: 12px;
+          background-color: #ffffff;
+          padding: 32px 28px;
+          border-radius: 28px;
+          box-shadow: 0 24px 48px rgba(13, 23, 67, 0.08);
+        }
+
+        .vendor-detail__breadcrumbs a {
           font-size: 0.9rem;
           color: rgba(27, 31, 59, 0.7);
         }
 
-        .vendor-profile__tag {
+        .vendor-detail__eyebrow {
           font-size: 0.85rem;
           letter-spacing: 0.08em;
           text-transform: uppercase;
           color: rgba(27, 31, 59, 0.6);
-          margin: 0 0 12px;
         }
 
-        .vendor-profile__header h1 {
+        .vendor-detail__header h1 {
           margin: 0;
-          font-size: 2.5rem;
+          font-size: 2.75rem;
           letter-spacing: -0.02em;
         }
 
-        .vendor-profile__meta {
-          margin: 12px 0 0;
+        .vendor-detail__meta {
+          margin: 0;
           font-size: 1.05rem;
           color: rgba(27, 31, 59, 0.72);
         }
 
-        .vendor-profile__section {
+        .vendor-detail__section {
           background-color: #ffffff;
           padding: 28px 24px;
           border-radius: 24px;
           box-shadow: 0 24px 48px rgba(13, 23, 67, 0.08);
         }
 
-        .vendor-profile__section h2 {
+        .vendor-detail__section h2 {
           margin-top: 0;
-          font-size: 1.5rem;
+          margin-bottom: 16px;
         }
 
-        .vendor-profile__section ul {
-          margin: 16px 0 0;
+        .vendor-detail__section ul {
+          margin: 0;
           padding-left: 20px;
           display: grid;
           gap: 12px;
+          font-size: 1rem;
+          color: rgba(27, 31, 59, 0.84);
         }
 
-        .vendor-profile__cta {
+        .vendor-detail__cta {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
+          flex-wrap: wrap;
           gap: 16px;
         }
 
-        .vendor-profile__cta a {
-          padding: 12px 24px;
+        .vendor-detail__cta a:first-of-type {
+          padding: 12px 22px;
           border-radius: 999px;
           background: linear-gradient(135deg, #2d4bff, #9a66ff);
           color: #ffffff;
           font-weight: 600;
-          letter-spacing: 0.02em;
+        }
+
+        .vendor-detail__cta a:last-of-type {
+          padding: 12px 22px;
+          border-radius: 999px;
+          border: 1px solid rgba(27, 31, 59, 0.1);
+          font-weight: 600;
+        }
+
+        .vendor-detail__note {
+          background-color: #ffffff;
+          padding: 24px 22px;
+          border-radius: 20px;
+          box-shadow: 0 16px 36px rgba(13, 23, 67, 0.08);
+          font-size: 0.95rem;
+          color: rgba(27, 31, 59, 0.75);
         }
 
         @media (max-width: 640px) {
-          .vendor-profile {
+          .vendor-detail {
             padding: 32px 16px;
           }
 
-          .vendor-profile__cta {
+          .vendor-detail__header h1 {
+            font-size: 2.1rem;
+          }
+
+          .vendor-detail__cta {
             flex-direction: column;
-            align-items: flex-start;
+            align-items: stretch;
+          }
+
+          .vendor-detail__cta a {
+            text-align: center;
           }
         }
       `}</style>
