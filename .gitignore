@@ -1,0 +1,11 @@
+# OS/Editor
+.DS_Store
+.idea/
+.vscode/
+# Node/Python
+node_modules/
+dist/
+build/
+coverage/
+venv/
+.env
