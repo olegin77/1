@@ -1,0 +1,114 @@
+:root {
+  color-scheme: light;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background-color: #f4f6fb;
+  color: #1b1f3b;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.lead-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background-color: #ffffff;
+  box-shadow: 0 8px 24px rgba(10, 23, 60, 0.08);
+}
+
+.lead-card [data-field] {
+  display: grid;
+  gap: 0.125rem;
+  font-size: 0.95rem;
+}
+
+.lead-card [data-field-label] {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(27, 31, 59, 0.6);
+}
+
+.responsive-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.responsive-table td,
+.responsive-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(9, 21, 52, 0.12);
+}
+
+@media (max-width: 640px) {
+  .lead-card [data-field] {
+    display: none;
+  }
+
+  .lead-card
+    [data-field="name"],
+  .lead-card
+    [data-field="priority"],
+  .lead-card
+    [data-field="status"],
+  .lead-card
+    [data-field="phone"],
+  .lead-card
+    [data-field="email"] {
+    display: grid;
+  }
+
+  .responsive-table thead {
+    display: none;
+  }
+
+  .responsive-table tbody,
+  .responsive-table tr,
+  .responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .responsive-table tr {
+    margin-bottom: 1.25rem;
+    border: 1px solid rgba(41, 54, 82, 0.1);
+    border-radius: 0.75rem;
+    background-color: #ffffff;
+    box-shadow: 0 8px 24px rgba(10, 23, 60, 0.06);
+    overflow: hidden;
+  }
+
+  .responsive-table td {
+    border: none;
+    padding: 0.75rem 1rem;
+  }
+
+  .responsive-table td[data-header]::before {
+    content: attr(data-header);
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(27, 31, 59, 0.6);
+    margin-bottom: 0.25rem;
+  }
+}
