@@ -9,3 +9,5 @@ build/
 coverage/
 venv/
 .env
+.codex_task.txt
+.codex_prompt.txt
