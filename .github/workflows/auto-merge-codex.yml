@@ -1,4 +1,6 @@
-name: Auto-merge codex -> main (light)
+mkdir -p /home/nod/codex_projects/1/.github/workflows
+cat > /home/nod/codex_projects/1/.github/workflows/auto-merge-codex.yml <<'YML'
+name: Auto-merge codex → main (light)
 
 on:
   push:
@@ -13,12 +15,11 @@ jobs:
   pr-automerge:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Create or update PR codex -> main
+      - name: Create or update PR codex → main
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
@@ -38,3 +39,10 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
           merge-method: squash
+YML
+
+cd /home/nod/codex_projects/1
+git add .github/workflows/auto-merge-codex.yml
+git commit -m "ci: add single stable auto-merge workflow"
+git push -u origin codex
+
