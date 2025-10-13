@@ -1,10 +1,9 @@
-mkdir -p /home/nod/codex_projects/1/.github/workflows
-cat > /home/nod/codex_projects/1/.github/workflows/auto-merge-codex.yml <<'YML'
-name: Auto-merge codex → main (light)
+name: auto(codex) to main
 
 on:
   push:
-    branches: [ codex ]
+    branches:
+      - codex
   workflow_dispatch:
 
 permissions:
@@ -12,19 +11,18 @@ permissions:
   pull-requests: write
 
 jobs:
-  pr-automerge:
+  pr_automerge:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Create or update PR codex → main
+      - name: Create or update PR (codex -> main)
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "auto(codex): iteration"
           title: "auto(codex): iteration"
           body: "Automated update from Codex loop"
           base: main
@@ -39,10 +37,3 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
           merge-method: squash
-YML
-
-cd /home/nod/codex_projects/1
-git add .github/workflows/auto-merge-codex.yml
-git commit -m "ci: add single stable auto-merge workflow"
-git push -u origin codex
-
