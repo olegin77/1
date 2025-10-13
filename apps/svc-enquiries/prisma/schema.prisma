@@ -6,3 +6,39 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum EnquiryStatus {
+  NEW
+  QUOTE_SENT
+  MEETING_SCHEDULED
+  CONTRACT_SIGNED
+  WON
+}
+
+model Enquiry {
+  id             String         @id @default(cuid())
+  vendorId       String
+  coupleName     String?
+  contactEmail   String?
+  contactPhone   String?
+  budget         Int?
+  status         EnquiryStatus  @default(NEW)
+  eventDate      DateTime?
+  source         String?
+  notes          String?
+  canLeaveReview Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([vendorId, status])
+  @@index([eventDate])
+}
+
+model RoiMetric {
+  id          String   @id @default(cuid())
+  vendorId    String   @unique
+  signedCount Int      @default(0)
+  wonCount    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
