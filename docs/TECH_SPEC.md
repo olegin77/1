@@ -1,413 +1,328 @@
-WEDDINGTECH UZ — ТЗ ДЛЯ CODEX (v4.1 — DO-SAFE)
-0) Почему раньше рвалось и как больше не допускать
+ WeddingTech UZ — TECH_SPEC (MVP v1)
 
-Запрещено: директории frontend/pages/api и frontend/app/api (Next API Routes). Все API — только в NestJS-сервисах.
+**Цель:** за 1–4 дня. собрать MVP двусторонней платформы для свадебного рынка Узбекистана с акцентом на B2B-ценность: **Enquiry Manager** (CRM-lite) и **Analytics Dashboard**, одновременно давая парам базовые инструменты планирования и каталог поставщиков/Тойхан.
 
-SSR для динамики: страницы /vendors/*, /planner/* не пререндерить SSG. Использовать SSR (App Router: dynamic="force-dynamic", revalidate=0; Pages Router: getServerSideProps).
+**От чего пляшем:** рынок >300 тыс. браков/год, выраженная сезонность (осенний пик); конкурент TO'YBOP на старте; глобальный бенчмарк Bridebook = B2B ROI-инструменты важнее, чем «планировщик как игрушка». Следовательно, MVP приоритезирует **измеримый ROI для поставщиков** (лиды, аналитика, позиция в поиске), а B2C — в объёме, достаточном для генерации спроса. (Источник: экспертный отчёт «Стратегия цифровизации…», разделы I–II, IV–VI.) 
 
-Типы/версии: единственные версии react, react-dom, @types/*; включить skipLibCheck.
+---
 
-DO build: на фронте во ВРЕМЯ СБОРКИ нужны devDeps (TS/@types) ⇒ NPM_CONFIG_PRODUCTION=false в Build-time env.
+## 1. Приоритеты MVP (строго по убыванию)
 
-Маршрутизация: ingress.rules (не «routes» внутри сервиса): /api → backend, / → frontend.
+1) **B2B / Enquiry Manager (CRM-lite)**  
+   - Сущности: `Enquiry`, `Supplier`, `Venue`.  
+   - Статусы лида: `NEW` → `CONTACTED` → `QUOTED` → `CONTRACT_SIGNED` → `WON` / `LOST`.  
+   - Переходы валидируются; комментарии/заметки по лидам; вложения опционально.
+2) **B2B / Analytics Dashboard**  
+   - Метрики: `total_enquiries`, `monthly_enquiries`, `profile_views`, `conversion_rate`.  
+   - Конкурентные метрики (premium): `search_position_per_region`, `monthly_search_appearances`.  
+   - Срезы по региону/категории/статусу лида.
+3) **B2C / Каталог (минимум для спроса)**  
+   - Поиск по Тойханам/поставщикам: регион, дата доступности, вместимость (для Тойхан), бюджет, рейтинг.  
+   - Профиль поставщика/Тойханы: медиагалерея, описание, прайс-диапазон, контакты.
+4) **B2C / Базовые планировщики**  
+   - Список гостей (500+), RSVP, экспорт/импорт CSV; чек-лист и бюджет — базово.
+5) **Инфраструктура/операторка**  
+   - БД: PostgreSQL (Docker).  
+   - Миграции Prisma; .env/.env.example; docker-compose для локалки.  
+   - CI: build+test для `apps/svc-enquiries` на PR из `codex` в `main`.  
+   - i18n RU/UZ (минимум: статический контент/лейблы).
 
-Health checks: обязателен /health в фронте и бэках.
+---
 
-1) Архитектура и каталогизация
-/
-├─ frontend/                # Next.js (B2C + B2B dashboard)
-│  ├─ app/                  # App Router (рекомендуется)
-│  │  ├─ health/route.ts    # 200 OK
-│  │  ├─ planner/layout.tsx # SSR layout
-│  │  └─ vendors/layout.tsx # SSR layout
-│  ├─ pages/                # Pages Router (наследие допустимо)
-│  │  ├─ health.tsx         # 200 OK
-│  │  └─ index.tsx          # fallback главная (если нет своей)
-│  ├─ tsconfig.json         # см. ниже (полный файл)
-│  └─ package.json          # см. ниже (полный блок scripts/overrides)
-│
-├─ apps/
-│  ├─ svc-vendors/          # NestJS + Prisma (VendorAvailability)
-│  ├─ svc-enquiries/        # NestJS + Prisma (Enquiry/ROI)
-│  └─ svc-search/           # NestJS + OpenSearch (GET /search?eventDate=...)
-│
-└─ do-app-spec.yaml         # Готовая спека для DigitalOcean (см. ниже)
+## 2. Архитектура/стек/структура репозитория
 
+**Стек:** Node 20, NestJS (REST), Prisma ORM, PostgreSQL, Next.js (frontend), pnpm/npm, GitHub Actions.
 
-НЕЛЬЗЯ создавать: frontend/pages/api/** и frontend/app/api/**.
+**Монорепо (уже частично создано):**
+apps/
+svc-enquiries/ # NestJS + Prisma (B2B API + часть B2C катл.)
+prisma/ # schema.prisma, миграции
+src/
+main.ts
+app.module.ts
+health/
+prisma/
+enquiries/ # контроллер/сервис/DTO/валидаторы
+analytics/ # контроллер/сервис
+frontend/ # Next.js; каталог/поиск/лендинг, позже — планировщик
+docs/
+TECH_SPEC.md
+CODEX_TASKS.md
+.env.example
+docker-compose.yml
 
-2) DigitalOcean App Spec (вставить как есть: App → Settings → App Spec → Edit → Save & Deploy)
-name: weddingtech
-features:
-  - buildpack-stack=ubuntu-22
-ingress:
-  rules:
-    - component: { name: backend }
-      match: { path: { prefix: /api } }
-    - component: { name: frontend }
-      match: { path: { prefix: / } }
+kotlin
+Копировать код
 
+---
+
+## 3. Модель данных (Prisma, минимум для MVP)
+
+```prisma
+// prisma/schema.prisma (apps/svc-enquiries/prisma)
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  type        String   // "venue" | "photographer" | ...
+  name        String
+  region      String   // "Tashkent" | "Samarkand" | ...
+  address     String?
+  capacity    Int?     // для Тойханы
+  priceMin    Int?     // UZS
+  priceMax    Int?
+  rating      Float?   // 0..5
+  photos      Json?    // массив ссылок
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  enquiries   Enquiry[]
+}
+
+model Enquiry {
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  coupleName  String
+  phone       String?
+  email       String?
+  eventDate   DateTime?
+  budgetUZS   Int?
+  guests      Int?
+  status      EnquiryStatus @default(NEW)
+  notes       String?
+  source      String?  // "catalog", "invite", "direct"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  QUOTED
+  CONTRACT_SIGNED
+  WON
+  LOST
+}
+
+model VenueAvailability {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  date       DateTime
+  available  Boolean  @default(true)
+  @@index([supplierId, date])
+}
+Инициализация: обязательны сиды (минимум: 3 Тойханы Ташкента + 2 поставщика других категорий; 5–10 Enquiry для аналитики).
+
+4. API (NestJS, svc-enquiries)
+4.1. Enquiries (CRUD + статусы)
+bash
+Копировать код
+POST   /enquiries                     body: CreateEnquiryDto
+GET    /enquiries                     query: EnquiryQueryDto (пагинация, фильтры)
+GET    /enquiries/:id
+PATCH  /enquiries/:id                 body: UpdateEnquiryDto
+PATCH  /enquiries/:id/status          body: UpdateEnquiryStatusDto {status}
+Статусы и переходы (валидация на сервисе):
+NEW → CONTACTED → QUOTED → CONTRACT_SIGNED → WON/LOST (прямые обратные переходы запрещать).
+
+DTO (валидация):
+
+ts
+Копировать код
+// CreateEnquiryDto
+{ supplierId: string; coupleName: string; phone?: string; email?: string; eventDate?: string(ISO); budgetUZS?: number; guests?: number; source?: string; notes?: string }
+
+// EnquiryQueryDto
+{ status?: EnquiryStatus; supplierId?: string; region?: string; dateFrom?: ISO; dateTo?: ISO; q?: string; page?: number; pageSize?: number }
+
+// UpdateEnquiryDto
+{ coupleName?: string; phone?: string; email?: string; eventDate?: ISO; budgetUZS?: number; guests?: number; notes?: string }
+
+// UpdateEnquiryStatusDto
+{ status: EnquiryStatus }
+4.2. Suppliers/Venues (минимум)
+bash
+Копировать код
+POST /suppliers
+GET  /suppliers?type=venue&region=...&capacity>=...&date=YYYY-MM-DD
+GET  /suppliers/:id
+PATCH /suppliers/:id
+Особое: для Тойхан — фильтр по дате/вместимости. Таблица VenueAvailability используется для ответа по доступности на дату.
+
+4.3. Analytics (B2B дашборд)
+rust
+Копировать код
+GET /analytics/overview?supplierId=...
+ -> { totalEnquiries, monthlyEnquiries: [{month, count}], profileViews, conversionRate }
+
+GET /analytics/competitive?supplierId=...   // premium
+ -> { searchPositionPerRegion: [{region, position}], monthlySearchAppearances: [{month, count}] }
+profileViews и конкурентные метрики сначала мокируются (счётчики на стороне сервиса + фиктивные данные), затем подключается реальная телеметрия фронта.
+
+5. B2C (минимум)
+Каталог/поиск (Next.js): страницы списка/деталей поставщика, фильтры (регион/дата/вместимость/бюджет/рейтинг).
+
+Гости/RSVP: сервер хранит лист (до 5k записей), импорт CSV, экспорт CSV; RSVP через публичную ссылку (минимально).
+
+Локализация RU/UZ (статические строки).
+
+6. UX/Контент
+Профиль поставщика: галерея (10–20 фото), цены в UZS, регион, контакты, FAQ.
+
+Тойхана: акцент на вместимость, примеры рассадки, возможность загрузить план зала (пока файл).
+
+Фронт минималистичный, адаптивный; SEO для страниц Тойхан.
+
+7. Нефункциональные и соответствия
+Производительность API: p95 < 300ms при 100 RPS на небольших инстансах.
+
+Логи: уровень info+error; трассировка запросов.
+
+Безопасность: rate limit публичных POST; валидация DTO; CORS.
+
+I18n: RU/UZ (латиница), валюта UZS.
+
+8. Конфигурация/окружение
+.env.example (корень):
+
+ini
+Копировать код
+# Postgres
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/weddingtech?schema=public
+
+# Node
+NODE_ENV=development
+PORT=3001
+docker-compose.yml (корень, локальный dev):
+
+yaml
+Копировать код
+version: "3.9"
 services:
-  - name: frontend
-    environment_slug: node-js
-    github: { repo: olegin77/weddingtech, branch: main, deploy_on_push: true }
-    source_dir: frontend
-    build_command: "npm ci && npm run build"
-    run_command: "next start -p $PORT --hostname 0.0.0.0"
-    http_port: 8080
-    instance_count: 1
-    instance_size_slug: basic-xxs
-    envs:
-      - { key: NODE_ENV, value: "production" }
-      - { key: NODE_VERSION, value: "20" }
-      - { key: NEXT_TELEMETRY_DISABLED, value: "1" }
-      - { key: NEXT_PUBLIC_API_BASE, value: "/api" }
-      # ВАЖНО: devDeps нужны на билде (typescript/@types)
-      - { key: NPM_CONFIG_PRODUCTION, value: "false", scope: "BUILD_TIME" }
-    health_check:
-      http_path: "/health"
-      initial_delay_seconds: 10
-      period_seconds: 10
-      timeout_seconds: 5
-      success_threshold: 1
-      failure_threshold: 3
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: weddingtech
+    ports: ["5432:5432"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+volumes:
+  pg_data:
+9. Сборка/команды (svc-enquiries)
+bash
+Копировать код
+# в apps/svc-enquiries
+npm ci
+npm run prisma:generate
+npm run prisma:migrate:dev   # применит миграции
+npm run build
+npm run start:dev
+npm run test
+npm run test:e2e
+Скрипты npm (обязательно в package.json):
 
-  - name: backend
-    environment_slug: node-js
-    github: { repo: olegin77/weddingtech, branch: main, deploy_on_push: true }
-    source_dir: backend
-    build_command: "npm ci"
-    run_command: "npm run start"
-    http_port: 8080
-    instance_count: 1
-    instance_size_slug: basic-xxs
-    envs:
-      - { key: NODE_ENV, value: "production" }
-      - { key: NODE_VERSION, value: "20" }
-    health_check:
-      http_path: "/health"
-      initial_delay_seconds: 5
-      period_seconds: 10
-      timeout_seconds: 5
-      success_threshold: 1
-      failure_threshold: 3
-
-
-Применение: после вставки — Force Rebuild + Clear build cache.
-
-3) Фронтенд: «некрушимые» файлы (вставить/поддерживать как есть)
-3.1 frontend/tsconfig.json
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "lib": ["DOM", "ES2021"],
-    "jsx": "preserve",
-    "moduleResolution": "bundler",
-    "baseUrl": ".",
-    "paths": { "@/*": ["*"] },
-    "strict": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+json
+Копировать код
+"scripts": {
+  "build": "tsc -p tsconfig.build.json",
+  "start": "node dist/main.js",
+  "start:dev": "nest start --watch",
+  "lint": "eslint .",
+  "test": "jest --passWithNoTests",
+  "test:e2e": "jest --config ./test/jest-e2e.json",
+  "prisma:generate": "prisma generate",
+  "prisma:migrate:dev": "prisma migrate dev --name init"
 }
+10. CI/CD
+Workflow (уже есть auto-merge-codex.yml) — оставляем. Дополнительно (создать Codex-ом):
 
-3.2 frontend/package.json (фрагмент — добавить/синхронизировать эти поля)
-{
-  "scripts": {
-    "build": "next build",
-    "start": "next start -p $PORT --hostname 0.0.0.0",
-    "dev": "next dev -p 3000"
-  },
-  "engines": { "node": "20.x", "npm": "10.x" },
-  "dependencies": {
-    "next": "15.5.4",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
-  },
-  "devDependencies": {
-    "typescript": "5.6.3",
-    "@types/react": "18.3.10",
-    "@types/react-dom": "18.3.0",
-    "@types/node": "20.12.12"
-  },
-  "overrides": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "@types/react": "18.3.10",
-    "@types/react-dom": "18.3.0"
-  }
-}
+ci-enquiries.yml (trigger: pull_request в main из codex): Node 20 → npm ci → npm run prisma:generate → npm run build → npm test.
 
-3.3 App Router — типизированные SSR-layout’ы (Next 15)
+Статус этого CI обязателен для автомёрджа (правила защиты ветки — по мере надобности).
 
-frontend/app/vendors/layout.tsx
+11. Критерии приёмки (MVP)
+Enquiry Manager:
 
-import type { LayoutProps } from "next";
+Создание лида (валидные/невалидные кейсы), смена статусов по разрешённым переходам.
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = 'force-no-store';
-export const dynamicParams = true;
+Фильтры/пагинация на GET /enquiries.
 
-export default function VendorsLayout(props: LayoutProps<"/vendors">) {
-  return <>{props.children}</>;
-}
+Метрики overview возвращают корректные суммы по текущим данным.
 
+Каталог:
 
-frontend/app/planner/layout.tsx
+GET /suppliers фильтрует по региону/типу, для Тойхан учитывает date и вместимость.
 
-import type { LayoutProps } from "next";
+Профиль поставщика содержит медиагалерею, цены, контакты.
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = 'force-no-store';
-export const dynamicParams = true;
+Планирование:
 
-export default function PlannerLayout(props: LayoutProps<"/planner">) {
-  return <>{props.children}</>;
-}
+Импорт/экспорт CSV списка гостей (1000+ строк); RSVP-ссылка работает.
 
-3.4 Health и fallback-главная
+Локализация:
 
-frontend/app/health/route.ts
+Переключение RU/UZ на фронте; API ответы — стабильные ключи.
 
-import { NextResponse } from 'next/server';
-export async function GET(){ return new NextResponse('OK',{status:200}); }
+Инфра:
 
+Проект поднимается локально docker-compose up db + сервис svc-enquiries.
 
-frontend/pages/health.tsx
+CI зелёный; PR codex → main автомёрджится при зелёном CI.
 
-export default function Health(){ return <div>OK</div>; }
+12. Дорожная карта (первые 4–8 недель)
+Недели 1–2:
 
+Prisma schema + миграции + сиды; Enquiries CRUD; Suppliers/Venues минимум; Healthcheck.
 
-frontend/pages/index.tsx (если нет своей главной)
+Фронт: список поставщиков, карточка.
 
-export default function Home(){
-  return (
-    <main style={{padding:24,fontFamily:'system-ui,sans-serif'}}>
-      <h1>WeddingTech — Frontend OK</h1>
-      <ul>
-        <li><a href="/health">/health</a></li>
-        <li><a href="/api/health">/api/health</a></li>
-        <li><a href="/vendors/123">/vendors/[id] (пример)</a></li>
-      </ul>
-    </main>
-  );
-}
+CI: ci-enquiries.yml.
 
-3.5 Pages Router (если остался) — запрет SSG
+Недели 3–4:
 
-Во всех файлах frontend/pages/vendors/** и frontend/pages/planner/** удалить getStaticProps/getStaticPaths, добавить:
+Enquiry status transitions + queries; Analytics: overview (реальные счётчики).
 
-export async function getServerSideProps(){ return { props: {} }; }
+Импорт/экспорт гостей + RSVP (минимум).
 
-4) Бэкенд-сервисы (NestJS)
+Недели 5–8:
 
-Общие инварианты (для всех apps/svc-*):
+Analytics competitive (моки → затем телеметрия).
 
-Экспонировать GET /health → 200 OK.
+Улучшение каталога: доступность по дате, сортировки, SEO.
 
-PORT берётся из окружения (DO подставит).
+Локализация RU/UZ, контент.
 
-Логировать ошибки и неподдержанные маршруты.
+13. Как работает Codex (итеративно)
+Источник задач — docs/CODEX_TASKS.md (чек-лист; Codex берёт первый - [ ] и делает инкремент).
 
-Enquiries (ROI): статусная машина включает
-NEW → QUOTE_SENT → MEETING_SCHEDULED → CONTRACT_SIGNED/WON.
-На CONTRACT_SIGNED/WON:
+После выполнения обязательно:
 
-апдейт метрик конверсии (ROI) в PG;
+отмечать пункт как [x],
 
-флаг «пара может оставить отзыв».
+добавлять в конец файла раздел ## Отчёт с кратким описанием изменений и следующими шагами,
 
-VendorAvailability: CRUD; при изменении → публиковать событие в MQ.
+коммитить мелко и осмысленно.
 
-Search (OpenSearch): подписан на событие из MQ; обновляет индекс; GET /search?eventDate=YYYY-MM-DD фильтрует доступных.
+Глобальный промпт для цикла:
 
-Персистентность: PostgreSQL/Prisma (Managed PostgreSQL DO; переменные окружения DATABASE_URL), OpenSearch — Managed (или Elastic-совместимый). RabbitMQ — внешний провайдер (CloudAMQP) или свой инстанс.
+«Работай по docs/CODEX_TASKS.md: возьми первый пункт - [ ], сделай минимальный полезный инкремент (код, миграции, тесты, CI), отметь [x], добавь отчёт. Соблюдай ТЗ в docs/TECH_SPEC.md. Если что-то мешает сборке/тестам — сначала чини сборку.»
 
-5) UX/Мобильность (минимум)
+14. Риски и ограничения MVP
+Конкурентные метрики (search_position_per_region) сначала как моки → позже реальная поисковая выдача.
 
-В frontend/pages/dashboard.tsx на мобиле: блок «Контроль follow-up» сразу под «Быстрая аналитика».
+3D-туры и FinTech — после MVP (см. Product Roadmap).
 
-В frontend/styles/globals.css — медиа-правила @media (max-width: 640px) скрывают второстепенные поля карточек лида (оставить Имя, Приоритет, Статус, Телефон/Email). Таблицы — в 1 колонку.
+Большие гостевые списки → в MVP без экстремальных оптимизаций, но с тестом на 5k строк.
 
-6) Локализация/Финансы
+15. Product Roadmap (после MVP)
+FinTech интеграции (кредиты/рассрочки, rev-share), premium analytics, 3D-туры для Тойхан, мобильные приложения, контент-хаб и партнёрства (ЗАГСы/Тойханы).
 
-RU/UZ (кириллица/латиница) — i18n на фронте (Next i18n routing или локальный i18n-пакет).
-
-Валюта: UZS. Платежи: на фазе 3 — Uzcard/HUMO/Visa (интерфейсы/адаптеры заранее).
-
-7) Документация/Код-стайл
-
-Комментарии на русском (JSDoc/TSDoc на публичных методах).
-
-Критические места (ROI-триггер, публикация в MQ) снабжать поясняющими строчными комментариями.
-
-8) Нерушимые правила CI/CD (без PR)
-
-Пуш напрямую в main (без PR).
-
-На каждое изменение — автодеплой DO (включен deploy_on_push).
-
-При изменениях во фронте, если DO «цепляется» за кэш, запускать Force Rebuild + Clear build cache.
-
-Запрещено добавлять/сохранять в репо что-либо под frontend/pages/api/**, frontend/app/api/**.
-
-9) (Опционально) Автофикс-скрипт для текущего репо
-
-Введи целиком в Codex — он приведёт фронт к DO-safe состоянию, создаст health’и и положит do-app-spec.yaml:
-
-#!/usr/bin/env bash
-set -euo pipefail
-REPO_URL="https://github.com/olegin77/weddingtech.git"
-REPO_DIR="$HOME/weddingtech"
-log(){ printf "\n\033[1;36m>> %s\033[0m\n" "$*"; }
-
-log "sync repo"
-if [ -d "$REPO_DIR/.git" ]; then cd "$REPO_DIR" && git fetch --all --prune && (git rebase --abort 2>/dev/null||true) && (git merge --abort 2>/dev/null||true) && git reset --hard origin/main;
-else git clone --depth 1 "$REPO_URL" "$REPO_DIR" && cd "$REPO_DIR"; fi
-
-log "purge Next API routes & legacy helpers"
-git rm -r --ignore-unmatch frontend/pages/api || true
-git rm -r --ignore-unmatch frontend/app/api   || true
-git rm -f --ignore-unmatch frontend/lib/apiAuth.ts || true
-git rm -f --ignore-unmatch frontend/pages/api/enquiries/export.ts || true
-
-log "write tsconfig"
-mkdir -p frontend
-cat > frontend/tsconfig.json <<'JSON'
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "lib": ["DOM", "ES2021"],
-    "jsx": "preserve",
-    "moduleResolution": "bundler",
-    "baseUrl": ".",
-    "paths": { "@/*": ["*"] },
-    "strict": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
-}
-JSON
-
-log "normalize package.json"
-node - <<'NODE'
-const fs=require('fs'); const p='frontend/package.json';
-const j=JSON.parse(fs.readFileSync(p,'utf8'));
-j.scripts=Object.assign({build:"next build",start:"next start -p $PORT --hostname 0.0.0.0",dev:"next dev -p 3000"},j.scripts||{});
-j.engines=Object.assign({node:"20.x",npm:"10.x"},j.engines||{});
-j.dependencies=Object.assign({"next":"15.5.4","react":"18.3.1","react-dom":"18.3.1"},j.dependencies||{});
-j.devDependencies=Object.assign({"typescript":"5.6.3","@types/react":"18.3.10","@types/react-dom":"18.3.0","@types/node":"20.12.12"},j.devDependencies||{});
-j.overrides=Object.assign({"react":"18.3.1","react-dom":"18.3.1","@types/react":"18.3.10","@types/react-dom":"18.3.0"},j.overrides||{});
-if (j.scripts && typeof j.scripts.preinstall==='string' && j.scripts.preinstall.includes('prune-legacy')) delete j.scripts.preinstall;
-fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n');
-console.log('frontend/package.json updated');
-NODE
-
-log "SSR layouts"
-mkdir -p frontend/app/vendors frontend/app/planner frontend/app/health frontend/pages
-cat > frontend/app/vendors/layout.tsx <<'TSX'
-import type { LayoutProps } from "next";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = 'force-no-store';
-export const dynamicParams = true;
-export default function VendorsLayout(props: LayoutProps<"/vendors">) { return <>{props.children}</>; }
-TSX
-cat > frontend/app/planner/layout.tsx <<'TSX'
-import type { LayoutProps } from "next";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = 'force-no-store';
-export const dynamicParams = true;
-export default function PlannerLayout(props: LayoutProps<"/planner">) { return <>{props.children}</>; }
-TSX
-
-log "health & home"
-cat > frontend/app/health/route.ts <<'TS'
-import { NextResponse } from 'next/server';
-export async function GET(){ return new NextResponse('OK',{status:200}); }
-TS
-cat > frontend/pages/health.tsx <<'TSX'
-export default function Health(){ return <div>OK</div>; }
-TSX
-[ -f frontend/pages/index.tsx ] || cat > frontend/pages/index.tsx <<'TSX'
-export default function Home(){ return (<main style={{padding:24,fontFamily:'system-ui,sans-serif'}}><h1>WeddingTech — Frontend OK</h1><ul><li><a href="/health">/health</a></li><li><a href="/api/health">/api/health</a></li><li><a href="/vendors/123">/vendors/[id] (пример)</a></li></ul></main>); }
-TSX
-
-log "DigitalOcean App Spec"
-cat > do-app-spec.yaml <<'YAML'
-name: weddingtech
-features:
-  - buildpack-stack=ubuntu-22
-ingress:
-  rules:
-    - component: { name: backend }
-      match: { path: { prefix: /api } }
-    - component: { name: frontend }
-      match: { path: { prefix: / } }
-services:
-  - name: frontend
-    environment_slug: node-js
-    github: { repo: olegin77/weddingtech, branch: main, deploy_on_push: true }
-    source_dir: frontend
-    build_command: "npm ci && npm run build"
-    run_command: "next start -p $PORT --hostname 0.0.0.0"
-    http_port: 8080
-    instance_count: 1
-    instance_size_slug: basic-xxs
-    envs:
-      - { key: NODE_ENV, value: "production" }
-      - { key: NODE_VERSION, value: "20" }
-      - { key: NEXT_TELEMETRY_DISABLED, value: "1" }
-      - { key: NEXT_PUBLIC_API_BASE, value: "/api" }
-      - { key: NPM_CONFIG_PRODUCTION, value: "false", scope: "BUILD_TIME" }
-    health_check:
-      http_path: "/health"
-      initial_delay_seconds: 10
-      period_seconds: 10
-      timeout_seconds: 5
-      success_threshold: 1
-      failure_threshold: 3
-  - name: backend
-    environment_slug: node-js
-    github: { repo: olegin77/weddingtech, branch: main, deploy_on_push: true }
-    source_dir: backend
-    build_command: "npm ci"
-    run_command: "npm run start"
-    http_port: 8080
-    instance_count: 1
-    instance_size_slug: basic-xxs
-    envs:
-      - { key: NODE_ENV, value: "production" }
-      - { key: NODE_VERSION, value: "20" }
-    health_check:
-      http_path: "/health"
-      initial_delay_seconds: 5
-      period_seconds: 10
-      timeout_seconds: 5
-      success_threshold: 1
-      failure_threshold: 3
-YAML
-
-log "final scan for forbidden imports"
-left=0
-grep -RIn --line-number "@/lib/apiAuth" frontend && left=1 || true
-grep -RIn --line-number "@/lib/stores/enquiryStore" frontend && left=1 || true
-if [ $left -ne 0 ]; then echo "НАЙДЕНЫ запрещённые импорты '@/lib/apiAuth' или '@/lib/stores/enquiryStore' во фронте — убери и перезапусти." >&2; exit 2; fi
-
-git add -A
-git commit -m "chore: DO-safe frontend (no Next API routes), typed SSR layouts, health, tsconfig/deps, DO spec" || true
-git push origin main
-echo "Готово. В DO: App → Settings → App Spec → Edit → вставь do-app-spec.yaml → Save & Deploy, затем Force Rebuild + Clear build cache."
