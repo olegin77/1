@@ -335,3 +335,32 @@ partners.bridebook.com
 
 Масштаб (соц-доказательства). 
 partners.bridebook.com
+ 15. DigitalOcean App Platform — требования к деплою (без предупреждений)
+
+**Цель:** деплой без «ругачек» со стороны DO App Platform.
+
+15.1   Общие правила рантайма
+
+- Процесс **слушает порт из `$PORT`** (по умолчанию 8080), **bind = `0.0.0.0`**.
+- **/health**: быстрый 200 OK (<100мс), JSON `{status:"ok", db:true/false}`, без редиректов.
+- Логи — **только stdout/stderr**, без фоновой демоннизации.
+- Выход по сигналам SIGTERM/SIGINT — чистый shutdown.
+- **Не использовать** локальные файлы как персистентные; БД — **Managed PostgreSQL** (строка в `DATABASE_URL`).
+- Переменные окружения: `NODE_ENV=production`, `PORT`, `DATABASE_URL`.
+- Миграции **в проде** — через `prisma migrate deploy` **на старте контейнера** (идемпотентно).
+
+15.2 Контейнер и сборка
+- **Dockerfile** мульти-стадийный, финальный образ — non-root user.
+- В прод-контейнер копируются: `dist/`, `node_modules/` (включая `.prisma` bin), Prisma schema для рантайм-команд.
+- Команда запуска: `./docker-cmd.sh` → выполняет миграции и стартует `node dist/main.js`.
+
+15.3 Спека DigitalOcean App Platform (`do/app.yaml`)
+- Один сервис `svc-enquiries` из Dockerfile `apps/svc-enquiries/Dockerfile`.
+- `http_port: 8080`, **health_check: `/health`**.
+- Секреты: `DATABASE_URL` и `DO_APP_ID`/`DO_API_TOKEN` (если используем CI-деплой).
+- Роут по умолчанию `/api` (можно расширить позже).
+
+15.4 CI/CD (main → deploy)
+- GitHub Actions job `deploy-do.yml`: checkout → `doctl apps update $DO_APP_ID --spec do/app.yaml`.
+- Секреты в GitHub: `DO_API_TOKEN`, `DO_APP_ID`.
+- Деплой триггерим **на пуш в `main`** после автослияния из `codex`.
