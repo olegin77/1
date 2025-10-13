@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { locales, defaultLocale, isSupportedLocale } from './lib/i18n';
+import { NextRequest, NextResponse } from "next/server";
+import { isSupportedLocale, resolveLocale } from "./lib/i18n";
 
 // Путь уже содержит локаль?
 function hasLocale(pathname: string) {
-  const seg = pathname.split('/').filter(Boolean)[0];
+  const seg = pathname.split("/").filter(Boolean)[0];
   return !!seg && isSupportedLocale(seg);
 }
 
@@ -12,23 +12,22 @@ export function middleware(req: NextRequest) {
 
   // Пропускаем служебные пути
   if (
-    pathname.startsWith('/api') ||
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon') ||
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
     pathname.match(/\.(.*)$/)
   ) {
     return NextResponse.next();
   }
 
   if (!hasLocale(pathname)) {
-    // Попробуем из cookie, заголовка или дефолт
-    const cookieLocale = req.cookies.get('locale')?.value;
-    const header = req.headers.get('accept-language') || '';
-    const headerLocale = header.split(',')[0]?.split('-')[0];
-    const target =
-      (cookieLocale && isSupportedLocale(cookieLocale) && cookieLocale) ||
-      (headerLocale && isSupportedLocale(headerLocale) && headerLocale) ||
-      defaultLocale;
+    const cookieLocale = req.cookies.get("locale")?.value;
+    const acceptLanguage = req.headers.get("accept-language") ?? "";
+    const headerLocales = acceptLanguage
+      .split(",")
+      .map((part) => part.split(";")[0])
+      .filter(Boolean);
+    const target = resolveLocale(cookieLocale, ...headerLocales);
 
     const url = req.nextUrl.clone();
     url.pathname = `/${target}${pathname}`;
@@ -40,5 +39,5 @@ export function middleware(req: NextRequest) {
 
 // Применяем ко всем путям
 export const config = {
-  matcher: ['/((?!_next|.*\\..*|api).*)']
+  matcher: ["/((?!_next|.*\\..*|api).*)"]
 };
