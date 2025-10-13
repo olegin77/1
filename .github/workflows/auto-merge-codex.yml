@@ -1,13 +1,9 @@
-name: Auto-merge codex → main (light)
+name: Auto-merge codex -> main (light)
 
 on:
   push:
     branches: [ codex ]
   workflow_dispatch:
-
-concurrency:
-  group: automerge-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -22,17 +18,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create/Update PR & enable auto-merge
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          PR_NUM=$(gh pr list --base main --head codex --json number --jq '.[0].number' || true)
-          if [ -z "${PR_NUM:-}" ] || [ "${PR_NUM}" = "null" ]; then
-            gh pr create --base main --head codex \
-              --title "Auto: codex → main" \
-              --body  "Automated PR created on push to 'codex'."
-            PR_NUM=$(gh pr list --base main --head codex --json number --jq '.[0].number')
-          fi
-          gh pr edit  "$PR_NUM" --add-label "auto"
-          gh pr merge "$PR_NUM" --auto --squash
+      - name: Create or update PR codex -> main
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "auto(codex): iteration"
+          title: "auto(codex): iteration"
+          body: "Automated update from Codex loop"
+          base: main
+          branch: codex
+          delete-branch: false
+          draft: false
+
+      - name: Enable auto-merge (squash)
+        if: steps.cpr.outputs.pull-request-number != ''
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: squash
