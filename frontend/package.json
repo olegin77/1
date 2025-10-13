@@ -1,0 +1,31 @@
+{
+  "name": "weddingtech-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "start": "next start -p $PORT --hostname 0.0.0.0",
+    "dev": "next dev -p 3000"
+  },
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
+  },
+  "dependencies": {
+    "next": "15.5.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "@types/react": "18.3.10",
+    "@types/react-dom": "18.3.0",
+    "@types/node": "20.12.12"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "@types/react": "18.3.10",
+    "@types/react-dom": "18.3.0"
+  }
+}

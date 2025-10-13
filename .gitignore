@@ -9,3 +9,6 @@ build/
 coverage/
 venv/
 .env
+frontend/.next/
+.codex_task.txt
+.codex_prompt.txt

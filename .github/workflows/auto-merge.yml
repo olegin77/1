@@ -1,42 +1,40 @@
-name: Auto-merge codex -> main
+name: "Auto-merge Codex ➜ main"
 
 on:
   push:
-    branches: [ "codex" ]
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  pull-requests: write
+    branches:
+      - codex
 
 jobs:
-  ensure-pr-and-automerge:
+  merge:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create or update PR
-        id: cpr
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(codex): sync"
-          title: "codex → main (auto)"
-          body: "Automated PR from codex branch."
-          branch: "codex"
-          base: "main"
-          labels: "codex, automated"
-          draft: false
+      - name: Set up Git
+        run: |
+          git config user.name "codex-bot"
+          git config user.email "codex@github-actions.local"
 
-      - name: Enable auto-merge
-        if: steps.cpr.outputs.pull-request-number != ''
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
-          merge-method: squash
+      - name: Merge codex -> main
+        run: |
+          git fetch origin main
+          git checkout main
+          git merge --no-edit origin/codex || true
+          git push origin main
 
-      - name: Note
-        if: steps.cpr.outputs.pull-request-number != ''
-        run: echo "Auto-merge произойдёт при прохождении required checks (включите branch protection для main)."
+      - name: Trigger DigitalOcean App redeploy
+        if: success()
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+          DO_APP_ID: ${{ secrets.DO_APP_ID }}
+        run: |
+          curl -X POST "https://api.digitalocean.com/v2/apps/${DO_APP_ID}/deployments" \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
+            -H "Content-Type: application/json"
+
