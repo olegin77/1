@@ -1,0 +1,21 @@
+name: Deploy to DigitalOcean App Platform
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+
+      - name: Update App Spec
+        env:
+          DO_APP_ID: ${{ secrets.DO_APP_ID }}
+        run: doctl apps update "$DO_APP_ID" --spec do/app.yaml

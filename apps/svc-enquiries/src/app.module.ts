@@ -4,6 +4,6 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { EnquiriesModule } from "./enquiries/enquiries.module";
 
 @Module({
-  imports: [PrismaModule, HealthModule, EnquiriesModule]
+  imports: [PrismaModule, HealthModule, EnquiriesModule],
 })
 export class AppModule {}
