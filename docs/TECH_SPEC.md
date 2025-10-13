@@ -1,328 +1,337 @@
- WeddingTech UZ — TECH_SPEC (MVP v1)
-
-**Цель:** за 1–4 дня. собрать MVP двусторонней платформы для свадебного рынка Узбекистана с акцентом на B2B-ценность: **Enquiry Manager** (CRM-lite) и **Analytics Dashboard**, одновременно давая парам базовые инструменты планирования и каталог поставщиков/Тойхан.
-
-**От чего пляшем:** рынок >300 тыс. браков/год, выраженная сезонность (осенний пик); конкурент TO'YBOP на старте; глобальный бенчмарк Bridebook = B2B ROI-инструменты важнее, чем «планировщик как игрушка». Следовательно, MVP приоритезирует **измеримый ROI для поставщиков** (лиды, аналитика, позиция в поиске), а B2C — в объёме, достаточном для генерации спроса. (Источник: экспертный отчёт «Стратегия цифровизации…», разделы I–II, IV–VI.) 
-
----
-
-## 1. Приоритеты MVP (строго по убыванию)
-
-1) **B2B / Enquiry Manager (CRM-lite)**  
-   - Сущности: `Enquiry`, `Supplier`, `Venue`.  
-   - Статусы лида: `NEW` → `CONTACTED` → `QUOTED` → `CONTRACT_SIGNED` → `WON` / `LOST`.  
-   - Переходы валидируются; комментарии/заметки по лидам; вложения опционально.
-2) **B2B / Analytics Dashboard**  
-   - Метрики: `total_enquiries`, `monthly_enquiries`, `profile_views`, `conversion_rate`.  
-   - Конкурентные метрики (premium): `search_position_per_region`, `monthly_search_appearances`.  
-   - Срезы по региону/категории/статусу лида.
-3) **B2C / Каталог (минимум для спроса)**  
-   - Поиск по Тойханам/поставщикам: регион, дата доступности, вместимость (для Тойхан), бюджет, рейтинг.  
-   - Профиль поставщика/Тойханы: медиагалерея, описание, прайс-диапазон, контакты.
-4) **B2C / Базовые планировщики**  
-   - Список гостей (500+), RSVP, экспорт/импорт CSV; чек-лист и бюджет — базово.
-5) **Инфраструктура/операторка**  
-   - БД: PostgreSQL (Docker).  
-   - Миграции Prisma; .env/.env.example; docker-compose для локалки.  
-   - CI: build+test для `apps/svc-enquiries` на PR из `codex` в `main`.  
-   - i18n RU/UZ (минимум: статический контент/лейблы).
-
----
-
-## 2. Архитектура/стек/структура репозитория
-
-**Стек:** Node 20, NestJS (REST), Prisma ORM, PostgreSQL, Next.js (frontend), pnpm/npm, GitHub Actions.
-
-**Монорепо (уже частично создано):**
-apps/
-svc-enquiries/ # NestJS + Prisma (B2B API + часть B2C катл.)
-prisma/ # schema.prisma, миграции
-src/
-main.ts
-app.module.ts
-health/
-prisma/
-enquiries/ # контроллер/сервис/DTO/валидаторы
-analytics/ # контроллер/сервис
-frontend/ # Next.js; каталог/поиск/лендинг, позже — планировщик
-docs/
-TECH_SPEC.md
-CODEX_TASKS.md
-.env.example
-docker-compose.yml
-
-kotlin
-Копировать код
-
----
-
-## 3. Модель данных (Prisma, минимум для MVP)
-
-```prisma
-// prisma/schema.prisma (apps/svc-enquiries/prisma)
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-generator client {
-  provider = "prisma-client-js"
-}
-
-model Supplier {
-  id          String   @id @default(cuid())
-  type        String   // "venue" | "photographer" | ...
-  name        String
-  region      String   // "Tashkent" | "Samarkand" | ...
-  address     String?
-  capacity    Int?     // для Тойханы
-  priceMin    Int?     // UZS
-  priceMax    Int?
-  rating      Float?   // 0..5
-  photos      Json?    // массив ссылок
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  enquiries   Enquiry[]
-}
-
-model Enquiry {
-  id          String   @id @default(cuid())
-  supplierId  String
-  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  coupleName  String
-  phone       String?
-  email       String?
-  eventDate   DateTime?
-  budgetUZS   Int?
-  guests      Int?
-  status      EnquiryStatus @default(NEW)
-  notes       String?
-  source      String?  // "catalog", "invite", "direct"
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-enum EnquiryStatus {
-  NEW
-  CONTACTED
-  QUOTED
-  CONTRACT_SIGNED
-  WON
-  LOST
-}
-
-model VenueAvailability {
-  id         String   @id @default(cuid())
-  supplierId String
-  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-  date       DateTime
-  available  Boolean  @default(true)
-  @@index([supplierId, date])
-}
-Инициализация: обязательны сиды (минимум: 3 Тойханы Ташкента + 2 поставщика других категорий; 5–10 Enquiry для аналитики).
-
-4. API (NestJS, svc-enquiries)
-4.1. Enquiries (CRUD + статусы)
-bash
-Копировать код
-POST   /enquiries                     body: CreateEnquiryDto
-GET    /enquiries                     query: EnquiryQueryDto (пагинация, фильтры)
-GET    /enquiries/:id
-PATCH  /enquiries/:id                 body: UpdateEnquiryDto
-PATCH  /enquiries/:id/status          body: UpdateEnquiryStatusDto {status}
-Статусы и переходы (валидация на сервисе):
-NEW → CONTACTED → QUOTED → CONTRACT_SIGNED → WON/LOST (прямые обратные переходы запрещать).
-
-DTO (валидация):
-
-ts
-Копировать код
-// CreateEnquiryDto
-{ supplierId: string; coupleName: string; phone?: string; email?: string; eventDate?: string(ISO); budgetUZS?: number; guests?: number; source?: string; notes?: string }
-
-// EnquiryQueryDto
-{ status?: EnquiryStatus; supplierId?: string; region?: string; dateFrom?: ISO; dateTo?: ISO; q?: string; page?: number; pageSize?: number }
-
-// UpdateEnquiryDto
-{ coupleName?: string; phone?: string; email?: string; eventDate?: ISO; budgetUZS?: number; guests?: number; notes?: string }
-
-// UpdateEnquiryStatusDto
-{ status: EnquiryStatus }
-4.2. Suppliers/Venues (минимум)
-bash
-Копировать код
-POST /suppliers
-GET  /suppliers?type=venue&region=...&capacity>=...&date=YYYY-MM-DD
-GET  /suppliers/:id
-PATCH /suppliers/:id
-Особое: для Тойхан — фильтр по дате/вместимости. Таблица VenueAvailability используется для ответа по доступности на дату.
-
-4.3. Analytics (B2B дашборд)
-rust
-Копировать код
-GET /analytics/overview?supplierId=...
- -> { totalEnquiries, monthlyEnquiries: [{month, count}], profileViews, conversionRate }
-
-GET /analytics/competitive?supplierId=...   // premium
- -> { searchPositionPerRegion: [{region, position}], monthlySearchAppearances: [{month, count}] }
-profileViews и конкурентные метрики сначала мокируются (счётчики на стороне сервиса + фиктивные данные), затем подключается реальная телеметрия фронта.
-
-5. B2C (минимум)
-Каталог/поиск (Next.js): страницы списка/деталей поставщика, фильтры (регион/дата/вместимость/бюджет/рейтинг).
-
-Гости/RSVP: сервер хранит лист (до 5k записей), импорт CSV, экспорт CSV; RSVP через публичную ссылку (минимально).
-
-Локализация RU/UZ (статические строки).
-
-6. UX/Контент
-Профиль поставщика: галерея (10–20 фото), цены в UZS, регион, контакты, FAQ.
-
-Тойхана: акцент на вместимость, примеры рассадки, возможность загрузить план зала (пока файл).
-
-Фронт минималистичный, адаптивный; SEO для страниц Тойхан.
-
-7. Нефункциональные и соответствия
-Производительность API: p95 < 300ms при 100 RPS на небольших инстансах.
-
-Логи: уровень info+error; трассировка запросов.
-
-Безопасность: rate limit публичных POST; валидация DTO; CORS.
-
-I18n: RU/UZ (латиница), валюта UZS.
-
-8. Конфигурация/окружение
-.env.example (корень):
-
-ini
-Копировать код
-# Postgres
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/weddingtech?schema=public
+WeddingTech UZ — Техническое задание (v0.1, 2025-10-13)
+0. Резюме и цели
 
-# Node
-NODE_ENV=development
-PORT=3001
-docker-compose.yml (корень, локальный dev):
+WeddingTech UZ — двухсторонняя платформа для свадебного рынка Узбекистана:
 
-yaml
-Копировать код
-version: "3.9"
-services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: weddingtech
-    ports: ["5432:5432"]
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-volumes:
-  pg_data:
-9. Сборка/команды (svc-enquiries)
-bash
-Копировать код
-# в apps/svc-enquiries
-npm ci
-npm run prisma:generate
-npm run prisma:migrate:dev   # применит миграции
-npm run build
-npm run start:dev
-npm run test
-npm run test:e2e
-Скрипты npm (обязательно в package.json):
+B2C: бесплатные инструменты планирования свадьбы (чек-лист, бюджет, гости/RSVP/посадка, сайт пары) и маркетплейс площадок/поставщиков.
 
-json
-Копировать код
-"scripts": {
-  "build": "tsc -p tsconfig.build.json",
-  "start": "node dist/main.js",
-  "start:dev": "nest start --watch",
-  "lint": "eslint .",
-  "test": "jest --passWithNoTests",
-  "test:e2e": "jest --config ./test/jest-e2e.json",
-  "prisma:generate": "prisma generate",
-  "prisma:migrate:dev": "prisma migrate dev --name init"
-}
-10. CI/CD
-Workflow (уже есть auto-merge-codex.yml) — оставляем. Дополнительно (создать Codex-ом):
+B2B: профиль поставщика/тойханы, приём заявок (Enquiry Manager с CRM-статусами), календарь доступности, акции/«поздняя доступность», отзывы, аналитика и продвижение.
 
-ci-enquiries.yml (trigger: pull_request в main из codex): Node 20 → npm ci → npm run prisma:generate → npm run build → npm test.
+Обоснование рынка и сроки: в Узбекистане >305 тыс. браков в год, выраженная сезонность (пик — октябрь/ноябрь). Чтобы поймать осенний пик, платформа должна быть функционально готова к весне; MVP — в Q1–Q2. 
 
-Статус этого CI обязателен для автомёрджа (правила защиты ветки — по мере надобности).
+Экспертный Отчет_ Стратегия Циф…
 
-11. Критерии приёмки (MVP)
-Enquiry Manager:
+ 
 
-Создание лида (валидные/невалидные кейсы), смена статусов по разрешённым переходам.
+Экспертный Отчет_ Стратегия Циф…
 
-Фильтры/пагинация на GET /enquiries.
 
-Метрики overview возвращают корректные суммы по текущим данным.
+Финмодель (год 1, конспект из отчёта): фокус на B2B-SaaS-монетизации; целевая выручка ~5 млрд UZS при положительном итоговом результате. 
 
-Каталог:
+Экспертный Отчет_ Стратегия Циф…
 
-GET /suppliers фильтрует по региону/типу, для Тойхан учитывает date и вместимость.
+ 
 
-Профиль поставщика содержит медиагалерею, цены, контакты.
+Экспертный Отчет_ Стратегия Циф…
 
-Планирование:
+1. Бенчмарк: ключевые фичи Bridebook, которые мы должны покрыть
+1.1 Инструменты планирования для пар
 
-Импорт/экспорт CSV списка гостей (1000+ строк); RSVP-ссылка работает.
+Гостевой список + RSVPs: учёт приглашений/ответов, диет, +1; линк с сайтом пары и онлайн-RSVP в реальном времени. 
+Bridebook
++2
+support.bridebook.com
++2
 
-Локализация:
+Чек-лист и бюджет-планер — в одном приложении; старт легко после регистрации. 
+Bridebook
++2
+Google Play
++2
 
-Переключение RU/UZ на фронте; API ответы — стабильные ключи.
+Поиск площадок/поставщиков с фильтрами по локации, бюджету, стилю, вместимости и наличию спецпредложений/late availability. 
+Bridebook
++2
+Bridebook
++2
 
-Инфра:
+Шорт-лист избранных поставщиков. 
+Bridebook
 
-Проект поднимается локально docker-compose up db + сервис svc-enquiries.
+Мобильное приложение (в перспективе). 
+Google Play
 
-CI зелёный; PR codex → main автомёрджится при зелёном CI.
+1.2 B2B для поставщиков/тойхан
 
-12. Дорожная карта (первые 4–8 недель)
-Недели 1–2:
+Профили бизнеса с портфолио, прайсами и модерацией качества. 
+partners.bridebook.com
 
-Prisma schema + миграции + сиды; Enquiries CRUD; Suppliers/Venues минимум; Healthcheck.
+Enquiry Manager/CRM-лайт: приём целевых лидов, статусы, коммуникация. 
+partners.bridebook.com
 
-Фронт: список поставщиков, карточка.
+Продвижение и офферы: открытые дни, поздняя доступность, спецпредложения. 
+partners.bridebook.com
++1
 
-CI: ci-enquiries.yml.
+Масштаб и охват (как ориентир): миллионы планировок/гостей, десятки тысяч бизнесов. 
+partners.bridebook.com
 
-Недели 3–4:
+2. Локализация под Узбекистан (дифференциаторы)
 
-Enquiry status transitions + queries; Analytics: overview (реальные счётчики).
+Большие тойы (500+ гостей) → масштабируемые гостевые списки, посадка по столам, печать/экспорт. 
 
-Импорт/экспорт гостей + RSVP (минимум).
+Экспертный Отчет_ Стратегия Циф…
 
-Недели 5–8:
+Традиционные этапы в чек-листе (Келин салом, Узатиш и т.д.). 
 
-Analytics competitive (моки → затем телеметрия).
+Экспертный Отчет_ Стратегия Циф…
 
-Улучшение каталога: доступность по дате, сортировки, SEO.
+Приоритет категории «Тойхана»: медиа высокого качества и интеграция 3D-туров. 
 
-Локализация RU/UZ, контент.
+Экспертный Отчет_ Стратегия Циф…
 
-13. Как работает Codex (итеративно)
-Источник задач — docs/CODEX_TASKS.md (чек-лист; Codex берёт первый - [ ] и делает инкремент).
+Модерируемые отзывы только от подтверждённых пар (contract-based). 
 
-После выполнения обязательно:
+Экспертный Отчет_ Стратегия Циф…
 
-отмечать пункт как [x],
+Двуязычие RU/UZ с возможностью расширения на EN.
 
-добавлять в конец файла раздел ## Отчёт с кратким описанием изменений и следующими шагами,
+Платёжные/финансовые опции (кредит/рассрочка) — этап 2. 
 
-коммитить мелко и осмысленно.
+Экспертный Отчет_ Стратегия Циф…
 
-Глобальный промпт для цикла:
+3. Объём MVP (версия 0.1)
+3.1 B2C (пары)
 
-«Работай по docs/CODEX_TASKS.md: возьми первый пункт - [ ], сделай минимальный полезный инкремент (код, миграции, тесты, CI), отметь [x], добавь отчёт. Соблюдай ТЗ в docs/TECH_SPEC.md. Если что-то мешает сборке/тестам — сначала чини сборку.»
+Регистрация (email/телефон), профиль пары, дата/город.
 
-14. Риски и ограничения MVP
-Конкурентные метрики (search_position_per_region) сначала как моки → позже реальная поисковая выдача.
+Гости/RSVP: импорт CSV/Excel (≥10k строк), статусы (приглашён/придёт/не идёт/не ответил), диеты, +1, посадка (столы N мест).
 
-3D-туры и FinTech — после MVP (см. Product Roadmap).
+Чек-лист (включая местные традиции), бюджет с категориями и факт-тратами.
 
-Большие гостевые списки → в MVP без экстремальных оптимизаций, но с тестом на 5k строк.
+Каталог: поиск по локации, цене, рейтингу, вместимости, доступности по дате. 
 
-15. Product Roadmap (после MVP)
-FinTech интеграции (кредиты/рассрочки, rev-share), premium analytics, 3D-туры для Тойхан, мобильные приложения, контент-хаб и партнёрства (ЗАГСы/Тойханы).
+Экспертный Отчет_ Стратегия Циф…
 
+Сайт пары + онлайн-RSVP (конструктор шаблонов).
+
+3.2 B2B (поставщики/тойханы)
+
+Личный кабинет: профиль/портфолио/прайс/FAQ/документы-доказательства. 
+
+Экспертный Отчет_ Стратегия Циф…
+
+Enquiry Manager (CRM-лайт): статусы «NEW → QUOTED → CONTRACT_SIGNED → WON/LOST», заметки, вложения. 
+
+Экспертный Отчет_ Стратегия Циф…
+
+Календарь доступности, спецпредложения/«late availability».
+
+3.3 Админ-панель
+
+Модерация профилей/медиа/отзывов, справочники (категории, города, валюты), локализация RU/UZ.
+
+4. Архитектура и стек
+4.1 Текущий репозиторий
+
+Monorepo (Node.js), сервис apps/svc-enquiries (NestJS + Prisma) уже создан и должен покрывать заявки (enquiries) и статусы переходов.
+
+Хранилище: PostgreSQL.
+
+Клиент: Next.js фронтенд (уже в репо).
+
+По умолчанию — Docker Compose для локалки.
+
+4.2 Сервисы (микросервисы/модули)
+
+svc-enquiries (NestJS): заявки/ответы/статусы/комм-лог.
+
+svc-vendors: профили поставщиков/тойхан, тарифы, верификация.
+
+svc-catalog: поиск/фильтры/индексация, расчёт сортировки.
+
+svc-guests: списки гостей/RSVP/посадка.
+
+svc-website: генерация сайта пары и публичные RSVP-эндпойнты.
+
+svc-auth: JWT/OAuth2, роли (PAIR, VENDOR, ADMIN).
+
+svc-billing (этап 2): платежи, кредиты/рассрочка. 
+
+Экспертный Отчет_ Стратегия Циф…
+
+5. Данные и модели (ядро, Prisma-ориентир)
+5.1 Основные сущности
+
+User(id, role, phone/email, locale, password_hash)
+
+Couple(id, userId, weddingDate, city)
+
+Vendor(id, ownerUserId, type, name, city, capacityMin/Max, priceFrom, rating, verified, documents[])
+
+Venue(id, vendorId, capacity, address, geo, media[], has3DTour, specialOffers[])
+
+Enquiry(id, coupleId, vendorId, date, budget, status, notes, source) — статусы как в CRM-лайт. 
+
+Экспертный Отчет_ Стратегия Циф…
+
+Review(id, coupleId, vendorId, rating, text, verifiedContract=true) — только после подтверждённого контракта. 
+
+Экспертный Отчет_ Стратегия Циф…
+
+Guest(id, coupleId, name, phone, RSVP, diet, plusOne, tableId?)
+
+Table(id, coupleId, name, seats, order)
+
+BudgetItem(id, coupleId, category, planned, actual)
+
+AvailabilitySlot(id, vendorId, date, status)
+
+Offer(id, vendorId, title, type: {LateAvailability|Special}, validFrom/To)
+
+(Примечание: вместимость 500+ и большие списки гостей — обязательное масштабирование API и БД.) 
+
+Экспертный Отчет_ Стратегия Циф…
+
+6. API (MVP, REST; все ответы JSON)
+
+База: /api/v1.
+
+6.1 Auth
+
+POST /auth/register {role: "PAIR"|"VENDOR", ...} → 201
+
+POST /auth/login → {accessToken, refreshToken}
+
+6.2 Enquiries (svc-enquiries)
+
+POST /enquiries (PAIR→VENDOR): {vendorId, date, budget, notes} → 201
+
+GET /enquiries?status=NEW&vendorId=... (VENDOR) → список
+
+PATCH /enquiries/:id (VENDOR): {status, priceQuote?, notes?} – проверка переходов; «NEW→QUOTED→CONTRACT_SIGNED→WON/LOST».
+
+GET /enquiries/:id – детально.
+(Контракты статусов и валидации уже заложены в сервис — сохраняем совместимость.)
+
+6.3 Vendors/Venues (svc-vendors)
+
+POST /vendors (создать профиль); PATCH /vendors/:id; GET /vendors/:id
+
+POST /vendors/:id/documents (верификация)
+
+GET /vendors?city=Tashkent&capacity>=500&date=2025-10-10 (поиск) — фильтры как у Bridebook: локация, цена, рейтинг, вместимость, дата-доступность, спецпредложения. 
+Bridebook
++2
+Bridebook
++2
+
+6.4 Guests/RSVP/Seating (svc-guests)
+
+POST /guests/import (CSV/Excel)
+
+GET /guests / PATCH /guests/:id (RSVP/диеты/+1)
+
+POST /tables / PATCH /tables/:id — столы и рассадка.
+
+6.5 Website & RSVP (svc-website)
+
+POST /website (генерация шаблона RU/UZ)
+
+Публичное: POST /rsvp/:slug (гость) — записывает ответ. 
+support.bridebook.com
+
+7. Поиск и ранжирование (svc-catalog)
+
+Поля индексации: город/регион, тип, вместимость, ценовой диапазон, рейтинг, наличие спецпредложений/late availability, доступность по дате. 
+Bridebook
++1
+
+Сигналы ранжирования: конверсия ответов на заявки (WON/CONTRACT_SIGNED), рейтинг/верификация, полнота профиля, актуальность календаря.
+
+8. Нефункциональные требования
+
+Производительность: списки гостей до 20k записей, ответы API <300 мс p95, экспорты/импорты — очереди.
+
+Надёжность: idempotency-ключи на импорт/RSVP; ретраи; хранение файлов в S3-совместимом стораже.
+
+Безопасность: JWT, scoped roles, модерация медиа/отзывов (только подтверждённые пары). 
+
+Экспертный Отчет_ Стратегия Циф…
+
+i18n: RU/UZ; дата/валюта локалей.
+
+Доступность: WCAG AA для публичного сайта пары.
+
+Аудит/события: все переходы статусов в enquiries логируются.
+
+9. UX-потоки (кратко)
+
+Пара: онбординг → выбор даты/города → чек-лист/бюджет → поиск тойханы по вместимости 500+ и дате → заявка → сайт пары → рассылка ссылки на RSVP → сбор ответов/посадка. (Вместимость и дата — ключевые фильтры.) 
+
+Экспертный Отчет_ Стратегия Циф…
+
+ 
+
+Экспертный Отчет_ Стратегия Циф…
+
+Поставщик/тойхана: регистрация → загрузка портфолио/документов → настройка календаря и офферов → приём заявок в Enquiry Manager → конверсия в контракт/отзыв.
+
+10. Аналитика и метрики
+
+B2B: воронка заявок (NEW→…→WON), средний чек, загрузка дат, эффективность офферов, источники лидов.
+
+B2C: прогресс чек-листа, бюджет vs фактическое, конверсия поиска в заявки, RSVP-ответы.
+
+Системное: p95/пулы соединений/ошибки; событийная шина для BI.
+
+11. CI/CD и ветвление
+
+Рабочая ветка ИИ: codex, прод: main.
+
+GitHub Actions: один workflow auto-merge-codex.yml (push на codex + workflow_dispatch) → создаёт/обновляет PR в main, включает auto-merge (squash).
+
+Required checks: линтер, юнит-тесты, миграции на тестовой БД, сборка.
+
+Codex-цикл: systemd user-timer запускает codex_loop.sh каждые 5 минут; если коммитов нет — PR не создаётся/не обновляется.
+
+12. План релизов (укрупнённо, привязка к сезонности)
+
+Этап 0 (≤2 недели): каркас сервисов, Auth, базовые схемы БД, админ-модерация.
+
+Этап 1 (≤4–6 недель): B2C ядро (гости/RSVP/посадка, чек-лист, бюджет), каталог и фильтры, сайт пары.
+
+Этап 2 (≤4 недели): B2B кабинет, Enquiry Manager, календарь/офферы, отзывы-по-контракту.
+
+Этап 3: мобильный веб-апп/мобилко, фин-интеграции (кредит/рассрочка). (Фин-этап обоснован в отчёте.) 
+
+Экспертный Отчет_ Стратегия Циф…
+
+Тайминг синхронизируем с целью «готово к весне → осенний пик». 
+
+Экспертный Отчет_ Стратегия Циф…
+
+13. Критерии готовности (DoD) для MVP
+
+Поиск тойхан/поставщиков работает по городу/цене/рейтингу/вместимости/дате; выдача ≤200 мс p95 на 1k карточек в индексе.
+
+Импорт гостей 10k+; онлайн-RSVP; генерация схемы посадки.
+
+Enquiry Manager со статусами/заметками; бизнес-профили с документами.
+
+PR codex→main автосоздаётся; автослияние при green checks.
+
+Базовая аналитика в кабинете поставщика: конверсия лидов, загрузка дат.
+
+14. Ссылки на конкурента/референсы
+
+Гости/RSVP + сайт пары: support/guest list & website/RSVP. 
+support.bridebook.com
++1
+
+Инструменты планирования: чек-лист/бюджет/гости. 
+Bridebook
++1
+
+Поиск площадок (фильтры, вместимость, спецпредложения/late availability). 
+Bridebook
++2
+Bridebook
++2
+
+B2B витрина/лиды/менеджер заявок/продвижение. 
+partners.bridebook.com
++1
+
+Масштаб (соц-доказательства). 
+partners.bridebook.com
