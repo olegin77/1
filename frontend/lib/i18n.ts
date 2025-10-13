@@ -15,10 +15,6 @@ const localeSet = new Set(localeCandidates);
 
 export const locales = Array.from(localeSet);
 
-const envDefault = normalizeLocale(process.env.APP_DEFAULT_LOCALE);
-export const defaultLocale =
-  envDefault && localeSet.has(envDefault) ? envDefault : locales[0];
-
 function matchLocale(candidate?: string | null) {
   const normalized = normalizeLocale(candidate);
   if (!normalized) {
@@ -37,6 +33,9 @@ function matchLocale(candidate?: string | null) {
   return null;
 }
 
+const envDefault = matchLocale(process.env.APP_DEFAULT_LOCALE);
+export const defaultLocale = envDefault ?? locales[0];
+
 export function resolveLocale(
   ...candidates: Array<string | null | undefined>
 ) {
@@ -51,5 +50,5 @@ export function resolveLocale(
 }
 
 export function isSupportedLocale(locale: string | null | undefined) {
-  return localeSet.has(normalizeLocale(locale));
+  return !!matchLocale(locale);
 }
