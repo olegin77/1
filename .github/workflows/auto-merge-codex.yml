@@ -10,6 +10,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: codex-automerge
+  cancel-in-progress: false
+
 jobs:
   pr_automerge:
     runs-on: ubuntu-latest
