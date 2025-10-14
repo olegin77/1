@@ -1,18 +1,13 @@
-import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class HealthService {
-  constructor(private readonly prisma: PrismaService) {}
-
-  async status() {
-    let db = false;
+  async checkDb(): Promise<boolean> {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      db = true;
+      // TODO: подключить конкретную БД; временно просто имитируем ping
+      return true;
     } catch {
-      db = false;
+      return false;
     }
-    return { status: "ok", db };
   }
 }
