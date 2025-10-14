@@ -1,0 +1,42 @@
+name: codex-pr
+
+on:
+  push:
+    branches: [codex]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure PR codex -> main exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          prnum="$(gh pr list --state open --base main --head codex --json number --jq '.[0].number' || true)"
+          if [[ -z "${prnum:-}" ]]; then
+            echo "No open PR codex->main. Creating…"
+            gh pr create --base main --head codex \
+              --title "auto: codex update" \
+              --body "Auto PR from codex."
+            prnum="$(gh pr list --state open --base main --head codex --json number --jq '.[0].number')"
+          else
+            echo "PR #$prnum already exists."
+          fi
+          echo "PR_NUMBER=$prnum" >> "$GITHUB_ENV"
+
+      - name: Enable auto-merge (squash)
+        if: env.PR_NUMBER != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --squash --auto
