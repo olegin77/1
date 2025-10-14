@@ -1,17 +1,26 @@
 name: auto-merge-codex
+
 on:
   push:
-    branches:
-      - codex
-    # при желании ограничь пути, чтобы автогенератор не трогал docs/**
-    # paths:
-    #   - '.codex/**'
-    #   - '.github/workflows/**'
-    #   - 'apps/**'
-    #   - 'frontend/**'
+    branches: [codex]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: codex-automerge
+  cancel-in-progress: false
 
 jobs:
+  # A) На каждый push в codex:
+  #  - убеждаемся, что tasks-файл существует и не пуст
+  #  - создаём/обновляем PR codex -> main
+  #  - включаем авто-слияние (squash)
   pr_automerge:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,16 +28,59 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Guard: tasks file must exist
+      - name: Guard: tasks file must exist (push)
         run: |
           if [ ! -f docs/CODEX_TASKS.md ]; then
             echo "::error file=docs/CODEX_TASKS.md::Missing tasks file"
-            git status --porcelain
-            git log --oneline -5
+            exit 1
+          fi
+          if [ ! -s docs/CODEX_TASKS.md ]; then
+            echo "::error file=docs/CODEX_TASKS.md::Empty tasks file"
             exit 1
           fi
 
-      # ниже — твои шаги, которые уже были в workflow
-      - name: pr_automerge
-        run: echo "OK"
+      - name: Create or update PR (codex -> main)
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "auto(codex): iteration"
+          body: "Automated update from Codex loop"
+          base: main
+          branch: codex
+          delete-branch: false
+          draft: false
+
+      - name: Enable auto-merge (squash)
+        if: steps.cpr.outputs.pull-request-number != ''
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: squash
+
+  # B) На каждый PR в main:
+  #  - проверяем наличие и непустоту tasks-файла (это и будет Required check для main)
+  pr_guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard: tasks file must exist (PR)
+        run: |
+          if [ ! -f docs/CODEX_TASKS.md ]; then
+            echo "::error file=docs/CODEX_TASKS.md::Missing tasks file"
+            exit 1
+          fi
+          if [ ! -s docs/CODEX_TASKS.md ]; then
+            echo "::error file=docs/CODEX_TASKS.md::Empty tasks file"
+            exit 1
+          fi
+
+      - name: OK
+        run: echo "guard passed"
 
