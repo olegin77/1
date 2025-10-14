@@ -1,9 +1,10 @@
 # Tasks
 
+- [ ] Быстрый **/health** (200 OK, {status:"ok", db:true|false})
+
 - [ ] Тип деплоя: **из исходников** (GitHub repo), сборку и запуск определяет App Platform по `package.json`
 - [ ] Требования:
 - [ ] Сервис слушает **$PORT** на **0.0.0.0**
-- [ ] Быстрый **/health** (200 OK, {status:"ok", db:true|false})
 - [ ] Логи только stdout/stderr
 - [ ] Миграции БД **на старте**: `prisma migrate deploy` (идемпотентно)
 - [ ] В `package.json`:
