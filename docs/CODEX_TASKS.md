@@ -1,5 +1,15 @@
 # Tasks
 
+- [ ] Тип деплоя: **из исходников** (GitHub repo), сборку и запуск определяет App Platform по `package.json`
+- [ ] Требования:
+- [ ] Сервис слушает **$PORT** на **0.0.0.0**
+- [ ] Быстрый **/health** (200 OK, {status:"ok", db:true|false})
+- [ ] Логи только stdout/stderr
+- [ ] Миграции БД **на старте**: `prisma migrate deploy` (идемпотентно)
+- [ ] В `package.json`:
+- [ ] `"build"`: сборка прод-артефактов
+- [ ] `"start"` (или `"start:prod"`): чтение `$PORT`, запуск сервера
+- [ ] `NODE_ENV=production`, `DATABASE_URL=<секрет>`, `PORT=<авто>`
 - [x] `"build"`: сборка прод-артефактов  — 2025-10-15 02:10
 - [x] `NODE_ENV=production`, `DATABASE_URL=<секрет>`, `PORT=<авто>`  — 2025-10-15 02:16
 - [x] `"start"` (или `"start:prod"`): чтение `$PORT`, запуск сервера  — 2025-10-15 02:20
