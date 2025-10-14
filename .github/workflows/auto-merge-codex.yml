@@ -1,14 +1,10 @@
 name: auto-merge-codex
+
 on:
   push:
-    branches:
-      - codex
-    # при желании ограничь пути, чтобы автогенератор не трогал docs/**
-    # paths:
-    #   - '.codex/**'
-    #   - '.github/workflows/**'
-    #   - 'apps/**'
-    #   - 'frontend/**'
+    branches: [codex]
+  pull_request:
+    branches: [main]
 
 jobs:
   pr_automerge:
@@ -23,12 +19,9 @@ jobs:
         run: |
           if [ ! -f docs/CODEX_TASKS.md ]; then
             echo "::error file=docs/CODEX_TASKS.md::Missing tasks file"
-            git status --porcelain
-            git log --oneline -5
             exit 1
           fi
 
-      # ниже — твои шаги, которые уже были в workflow
-      - name: pr_automerge
-        run: echo "OK"
+      - name: OK
+        run: echo "guard passed"
 
