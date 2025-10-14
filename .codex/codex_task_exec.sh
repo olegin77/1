@@ -1,128 +1,133 @@
+# .codex/codex_task_exec.sh
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
-TASKS_FILE="docs/CODEX_TASKS.md"
+ROOT="$(pwd)"
 APP_DIR="apps/svc-enquiries"
-PKG_JSON="${APP_DIR}/package.json"
-MAIN_TS="${APP_DIR}/src/main.ts"
-HEALTH_CTRL="${APP_DIR}/src/health/health.controller.ts"
-HEALTH_SVC="${APP_DIR}/src/health/health.service.ts"
-HEALTH_MOD="${APP_DIR}/src/health/health.module.ts"
-APP_MOD="${APP_DIR}/src/app.module.ts"
+SRC_DIR="$APP_DIR/src"
+PKG="$APP_DIR/package.json"
 
-ts_now() { date '+%Y-%m-%d %H:%M'; }
+ts(){ date '+%F %T %z'; }
+log(){ echo "[$(ts)] $*"; }
 
-mark_done() {
-  local ln="$1"
-  local msg="${2:-Авто-итерация: задача выполнена.}"
-  local ts; ts="$(ts_now)"
-  # отмечаем чекбокс и прибиваем таймстемп
-  sed -i "${ln}s/^- \[ \]/- [x]/; ${ln}s/$/  — ${ts}/" "$TASKS_FILE"
-  {
-    echo
-    echo "## Отчёт — ${ts}"
-    echo "${msg}"
-  } >> "$TASKS_FILE"
-}
-
-first_open_line() {
-  # return: "lineno|text"
-  local out
-  out="$(grep -nE '^- \[ \] ' "$TASKS_FILE" | head -1 || true)"
-  if [[ -z "$out" ]]; then
-    echo ""
-  else
-    local ln="${out%%:*}"
-    local text="${out#*: }"
-    echo "${ln}|${text}"
+ensure_file(){
+  local path="$1" content="$2"
+  if [ ! -f "$path" ]; then
+    mkdir -p "$(dirname "$path")"
+    printf "%s\n" "$content" > "$path"
+    return 0
   fi
+  return 1
 }
 
-ensure_node_edit_json() {
-  # $1 = file, $2 = inline node program
-  node --eval "
-    const fs=require('fs');
-    const p='$1';
-    const data=JSON.parse(fs.readFileSync(p,'utf8'));
-    (function(){ $2 })(data);
-    fs.writeFileSync(p, JSON.stringify(data,null,2)+'\n');
-  "
+json_has_key(){ # file keypath(with dots)
+  node -e 'const fs=require("fs");const f=process.argv[1];const k=process.argv[2].split(".");const j=JSON.parse(fs.readFileSync(f,"utf8"));let o=j;for(const p of k){if(!(p in o)){process.exit(2)}o=o[p]}process.exit(0)' "$1" "$2" >/dev/null 2>&1
 }
 
-ensure_pkg_scripts() {
-  # добавим/обновим build/start:prod/start:migrate
-  ensure_node_edit_json "$PKG_JSON" '
-    data.scripts ||= {};
-    // build — стандартный для Nest: tsc
-    if(!data.scripts.build){ data.scripts.build="nest build || tsc -p tsconfig.build.json"; }
-    // start:prod — запуск dist, PORT читается в коде
-    if(!data.scripts["start:prod"]){ data.scripts["start:prod"]="node dist/main.js"; }
-    // start:migrate — prisma migrate deploy + старт
-    data.scripts["start:migrate"]="prisma migrate deploy && node dist/main.js";
-  '
+json_write_key(){ # file key value(json)
+  node -e '
+    const fs=require("fs");
+    const file=process.argv[1], key=process.argv[2].split("."), val=JSON.parse(process.argv[3]);
+    const j=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,"utf8")):{};
+    let o=j; for (let i=0;i<key.length-1;i++){ const k=key[i]; o[k]=o[k]||{}; o=o[k]; }
+    o[key[key.length-1]] = val;
+    fs.writeFileSync(file, JSON.stringify(j,null,2)+"\n");
+  ' "$1" "$2" "$3"
 }
 
-ensure_listen_port_host() {
-  # правим main.ts: читаем PORT, слушаем на 0.0.0.0
-  if [[ -f "$MAIN_TS" ]]; then
-    # если нет createNestApplication – пропускаем контентно-безопасные замены
-    sed -i \
-      -e 's|await app\.listen([^)]*)|const port=parseInt(process.env.PORT||"3000",10);\n  await app.listen(port,"0.0.0.0")|g' \
-      "$MAIN_TS"
-    # если предыдущее не сработало (другая форма) – добавим явный listen
-    if ! grep -q '0\.0\.0\.0' "$MAIN_TS"; then
-      awk '
-        {print}
-        /await app\.listen/ && !p { 
-          print "// codex: enforce host 0.0.0.0 + env PORT";
-          print "const port = parseInt(process.env.PORT || \"3000\", 10);";
-          print "await app.listen(port, \"0.0.0.0\");";
-          p=1
-        }' "$MAIN_TS" > "$MAIN_TS.__new" && mv "$MAIN_TS.__new" "$MAIN_TS"
-    fi
+mark_done(){
+  local pattern="$1"
+  local stamp
+  stamp="$(date '+%Y-%m-%d %H:%M')"
+  awk -v pat="$pattern" -v stamp="$stamp" '
+    BEGIN{done=0; IGNORECASE=1}
+    {
+      if(!done && $0 ~ /^- \[ \] / && $0 ~ pat){
+        sub(/^- \[ \] /,"- [x] ")
+        $0 = $0 "  — " stamp
+        done=1
+      }
+      print
+    }
+  ' docs/CODEX_TASKS.md > docs/.CODEX_TASKS.md.tmp && mv docs/.CODEX_TASKS.md.tmp docs/CODEX_TASKS.md
+}
+
+first_open_task(){
+  awk '
+    BEGIN{IGNORECASE=1}
+    /^- \[ \] /{print; exit}
+  ' docs/CODEX_TASKS.md
+}
+
+ensure_node_tools(){
+  if ! command -v node >/dev/null 2>&1; then
+    log "Node.js is required for JSON edits (package.json)."
+    return 1
   fi
+  return 0
 }
 
-ensure_health() {
-  # /health: {status:"ok", db:true|false}
-  mkdir -p "${APP_DIR}/src/health"
+# --- RULES ---
 
-  # controller
-  cat > "$HEALTH_CTRL" <<'TS'
-import { Controller, Get } from '@nestjs/common';
-import { HealthService } from './health.service';
+rule_listen_port(){
+  # “Сервис слушает $PORT на 0.0.0.0” → apps/svc-enquiries/src/main.ts
+  local main="$SRC_DIR/main.ts"
+  ensure_file "$main" '/* bootstrap placeholder; will be overwritten by codex */' || true
+  if ! grep -q 'listen(.*process.env.PORT' "$main" 2>/dev/null || ! grep -qi "0\.0\.0\.0" "$main"; then
+    cat > "$main" <<'TS'
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
 
-@Controller('health')
-export class HealthController {
-  constructor(private readonly svc: HealthService) {}
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const port = Number(process.env.PORT || 8080);
+  await app.listen(port, '0.0.0.0');
+}
+bootstrap();
+TS
+    log "Updated apps/svc-enquiries/src/main.ts to listen on $PORT and 0.0.0.0"
+    return 0
+  fi
+  return 1
+}
 
-  @Get()
-  async ok() {
-    const db = await this.svc.checkDb();
+rule_health_endpoint(){
+  # “Быстрый /health (200 OK, {status:"ok", db:true|false})”
+  local mod="$SRC_DIR/health/health.module.ts"
+  local svc="$SRC_DIR/health/health.service.ts"
+  local ctl="$SRC_DIR/health/health.controller.ts"
+  local appmod="$SRC_DIR/app.module.ts"
+
+  ensure_file "$mod" '' || true
+
+  cat > "$svc" <<'TS'
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class HealthService {
+  async check() {
+    // TODO: wire real DB ping when Prisma present
+    const db = false;
     return { status: 'ok', db };
   }
 }
 TS
 
-  # service
-  cat > "$HEALTH_SVC" <<'TS'
-import { Injectable } from '@nestjs/common';
+  cat > "$ctl" <<'TS'
+import { Controller, Get } from '@nestjs/common';
+import { HealthService } from './health.service';
 
-@Injectable()
-export class HealthService {
-  async checkDb(): Promise<boolean> {
-    try {
-      // TODO: подключить конкретную БД; временно просто имитируем ping
-      return true;
-    } catch {
-      return false;
-    }
+@Controller('health')
+export class HealthController {
+  constructor(private readonly health: HealthService) {}
+  @Get()
+  async get() {
+    return await this.health.check();
   }
 }
 TS
 
-  # module
-  cat > "$HEALTH_MOD" <<'TS'
+  cat > "$mod" <<'TS'
 import { Module } from '@nestjs/common';
 import { HealthController } from './health.controller';
 import { HealthService } from './health.service';
@@ -134,82 +139,101 @@ import { HealthService } from './health.service';
 export class HealthModule {}
 TS
 
-  # подключаем в app.module.ts
-  if [[ -f "$APP_MOD" ]]; then
-    if ! grep -q "HealthModule" "$APP_MOD"; then
-      sed -i '1i import { HealthModule } from "./health/health.module";' "$APP_MOD"
-      sed -i 's/@Module({/@Module({\n  imports: [HealthModule],/' "$APP_MOD"
-    fi
+  ensure_file "$appmod" "export class AppModule {}" || true
+  if ! grep -q 'HealthModule' "$appmod" 2>/dev/null; then
+    cat > "$appmod" <<'TS'
+import { Module } from '@nestjs/common';
+import { HealthModule } from './health/health.module';
+
+@Module({
+  imports: [HealthModule],
+})
+export class AppModule {}
+TS
+    log "Wired HealthModule in app.module.ts"
   fi
+  log "Health endpoint scaffolded"
+  return 0
 }
 
-case_task() {
-  local ln="$1" txt="$2"
+rule_package_scripts(){
+  # “В package.json: build/start/start:migrate”
+  ensure_node_tools || return 1
+  ensure_file "$PKG" '{ "name":"svc-enquiries","version":"0.0.0" }' || true
 
-  # 1) Сервис слушает $PORT на 0.0.0.0
-  if [[ "$txt" == *"Сервис слушает"*"\$PORT"* && "$txt" == *"0.0.0.0"* ]]; then
-    ensure_listen_port_host
-    mark_done "$ln" "Слушаем \$PORT на 0.0.0.0 (NestJS main.ts)."
-    return 0
-  fi
+  json_write_key "$PKG" "scripts.build"         '"nest build || tsc -p tsconfig.build.json || true"'
+  json_write_key "$PKG" "scripts.start"         '"node dist/main.js"'
+  json_write_key "$PKG" "scripts.start:prod"    '"node dist/main.js"'
+  json_write_key "$PKG" "scripts.start:migrate" '"prisma migrate deploy && node dist/main.js"'
+  json_write_key "$PKG" "scripts.dev"           '"nest start --watch || ts-node src/main.ts || true"'
+  json_write_key "$PKG" "engines.node"          '">=18"'
 
-  # 2) Быстрый /health
-  if [[ "$txt" == *"/health"* ]]; then
-    ensure_health
-    mark_done "$ln" "Добавлен /health (status/db)."
-    return 0
-  fi
-
-  # 3) Логи только stdout/stderr — в Nest и так stdout; фиксировать нечего
-  if [[ "$txt" == *"Логи только stdout/stderr"* ]]; then
-    mark_done "$ln" "Стандартный Nest пишет в stdout/stderr — ок."
-    return 0
-  fi
-
-  # 4) Миграции на старте
-  if [[ "$txt" == *"Миграции БД"* && "$txt" == *"prisma migrate deploy"* ]]; then
-    ensure_pkg_scripts
-    mark_done "$ln" "Добавлен скрипт start:migrate (prisma migrate deploy + старт)."
-    return 0
-  fi
-
-  # 5) Блок про package.json → проверим/добавим build, start:prod
-  if [[ "$txt" == *"В \`package.json\`"* ]]; then
-    ensure_pkg_scripts
-    mark_done "$ln" "Проверены/добавлены скрипты build/start:prod/start:migrate."
-    return 0
-  fi
-
-  # 6) Конкретные подпункты build/start/start:migrate
-  if [[ "$txt" == *'"build"'* || "$txt" == *'"start":'*(или)* || "$txt" == *'"start:migrate"'* ]]; then
-    ensure_pkg_scripts
-    mark_done "$ln" "Скрипты package.json зафиксированы."
-    return 0
-  fi
-
-  return 1
+  log "package.json scripts ensured"
+  return 0
 }
 
-main() {
-  if [[ ! -f "$TASKS_FILE" ]]; then
-    echo "no tasks file: $TASKS_FILE"
-    exit 0
-  fi
-
-  local first; first="$(first_open_line)"
-  if [[ -z "$first" ]]; then
-    echo "no open tasks"
-    exit 0
-  fi
-
-  local ln="${first%%|*}"
-  local txt="${first#*|}"
-
-  if case_task "$ln" "$txt"; then
-    echo "task executed: $txt"
-  else
-    echo "exec: unknown pattern (no-op). Extend codex_task_exec.sh rules."
-  fi
+rule_do_yaml(){
+  # DigitalOcean app.yaml базовый
+  local DO="do/app.yaml"
+  ensure_file "$DO" '' || true
+  cat > "$DO" <<'YAML'
+name: weddingtech-uz
+region: fra
+services:
+  - name: svc-enquiries
+    dockerfile_path: apps/svc-enquiries/Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+      - path: /api
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_AND_BUILD_TIME
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+YAML
+  log "do/app.yaml ensured"
+  return 0
 }
 
-main "$@"
+# --- SELECT FIRST OPEN TASK & EXECUTE ---
+
+[ -f docs/CODEX_TASKS.md ] || { echo "# Tasks" > docs/CODEX_TASKS.md; }
+
+task="$(first_open_task || true)"
+if [ -z "${task:-}" ]; then
+  log "no open tasks — nothing to do"
+  exit 0
+fi
+
+log "first open task: $task"
+
+shopt -s nocasematch
+changed=0
+if [[ "$task" =~ (0\.0\.0\.0|PORT|\$PORT) ]]; then rule_listen_port && changed=1; fi
+if [[ "$task" =~ (health|/health) ]]; then rule_health_endpoint && changed=1; fi
+if [[ "$task" =~ (package\.json|scripts|build|start) ]]; then rule_package_scripts && changed=1; fi
+if [[ "$task" =~ (DigitalOcean|App Platform|DO|app\.ya?ml) ]]; then rule_do_yaml && changed=1; fi
+shopt -u nocasematch
+
+if [ "$changed" -eq 1 ]; then
+  if [[ "$task" =~ (health|/health) ]]; then mark_done "health"; fi
+  if [[ "$task" =~ (0\.0\.0\.0|PORT|\$PORT) ]]; then mark_done "PORT|0\.0\.0\.0"; fi
+  if [[ "$task" =~ (package\.json|scripts|build|start) ]]; then mark_done "package\\.json|scripts|build|start"; fi
+  if [[ "$task" =~ (DigitalOcean|App Platform|DO|app\.ya?ml) ]]; then mark_done "DigitalOcean|App Platform|app\\.ya?ml"; fi
+  exit 0
+else
+  log "no matching rule for first open task — skipping"
+  exit 0
+fi
+

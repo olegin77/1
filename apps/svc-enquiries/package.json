@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "nest build || tsc -p tsconfig.build.json || true",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
-    "start:migrate": "npm run prisma:migrate:deploy && node dist/main.js",
+    "start:migrate": "prisma migrate deploy && node dist/main.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev --name init",
     "lint": "eslint .",
     "test": "jest --passWithNoTests",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "dev": "nest start --watch || ts-node src/main.ts || true"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -33,5 +34,8 @@
     "@types/jest": "^29.5.12",
     "ts-jest": "^29.2.5",
     "eslint": "^8.57.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

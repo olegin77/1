@@ -1,3 +1,4 @@
+# .codex/codex_seed_from_spec.py
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os, io, re, datetime
@@ -113,7 +114,6 @@ def main():
     if not lines or not lines[0].lstrip().startswith("#"):
         lines.insert(0, "# Tasks"); lines.insert(1, "")
 
-    # вставляем сразу под заголовок, без «сид»-секций
     insert_at = 2 if len(lines) >= 2 else len(lines)
     lines.insert(insert_at, block)
     out = ("\n".join(lines)).rstrip() + "\n"
@@ -121,3 +121,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
