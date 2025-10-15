@@ -1,6 +1,6 @@
 # Tasks
 
-- [ ] Тип деплоя: **из исходников** (GitHub repo), сборку и запуск определяет App Platform по `package.json`
+- [x] Тип деплоя: **из исходников** (GitHub repo), сборку и запуск определяет App Platform по `package.json`  — 2025-10-15 23:20
 - [ ] Требования:
 - [ ] Сервис слушает **$PORT** на **0.0.0.0**
 - [ ] Быстрый **/health** (200 OK, {status:"ok", db:true|false})
