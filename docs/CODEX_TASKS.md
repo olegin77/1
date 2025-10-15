@@ -4,7 +4,7 @@
 
 - [x] svc-enquiries: обеспечить запуск на 0.0.0.0 и чтение $PORT
 - [x] svc-enquiries: реализовать базовый /health эндпоинт
-- [ ] svc-vendors: создать каркас NestJS-сервиса (app.module, main.ts, health endpoint)
+- [x] svc-vendors: создать каркас NestJS-сервиса (app.module, main.ts, health endpoint) — 2025-10-16 02:40:01 +0500
 - [ ] svc-auth: создать каркас NestJS-сервиса (app.module, main.ts, health endpoint)
 - [ ] svc-guests: создать каркас NestJS-сервиса (app.module, main.ts, health endpoint)
 - [ ] svc-catalog: создать каркас NestJS-сервиса (app.module, main.ts, health endpoint)
