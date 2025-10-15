@@ -4,37 +4,50 @@ set -Eeuo pipefail
 export TZ=:Asia/Tashkent
 
 ts(){ date '+%F %T %z'; }
+log(){ echo >&2 "[$(ts)] $*"; }
 
-echo ">> === $(ts) codex_loop.sh start (exec-tasks) ==="
+echo ">> === $(ts) codex_loop.sh start ==="
 
-git fetch --prune origin
-git checkout -B codex origin/codex
-git pull --ff-only origin codex || { git reset --hard origin/codex; git clean -fdx; }
+# 1. Жестко синхронизируемся, чтобы предотвратить ошибки "local changes would be overwritten"
+git fetch origin
+git reset --hard origin/codex
+log "Repository synced with origin/codex"
 
-# сидер — дозаправка задач (если нужен; файл существует — ок)
+# 2. Запускаем сидер для пополнения задач
 if [ -x .codex/codex_seed_from_spec.py ]; then
+  log "Running task seeder..."
   python3 .codex/codex_seed_from_spec.py || true
-  git add docs/CODEX_TASKS.md || true
-  git commit -m "auto(seed): задачи из TECH_SPEC (threshold)" || true
 fi
 
-echo ">> executing first open task"
-before="$(git status --porcelain)"
+# 3. Запускаем исполнителя для выполнения одной задачи
 if [ -x ".codex/codex_task_exec.sh" ]; then
+  log "Running task executor..."
   .codex/codex_task_exec.sh || true
 else
-  echo "!! executor not found: .codex/codex_task_exec.sh"
+  log "!! Executor not found: .codex/codex_task_exec.sh"
 fi
-after="$(git status --porcelain)"
 
-# коммитим ТОЛЬКО если есть изменения НЕ в docs/
-if git diff --name-only | grep -qvE '^(docs/|README|LICENSE)'; then
-  git add -A
-  git commit -m "auto(codex): iteration" || true
-  git push origin HEAD:codex
-  echo ">> commit & push done"
+# 4. Проверяем, есть ли ВООБЩЕ какие-либо изменения
+if git diff --quiet --exit-code; then
+    log "No changes detected after execution. Exiting."
+    echo ">> === $(ts) codex_loop.sh done (no changes) ==="
+    exit 0
+fi
+
+# 5. Если изменения есть, определяем, нужно ли пушить.
+# `git diff --quiet HEAD -- . ':!docs/'` проверяет, есть ли изменения вне папки docs/
+if git diff --quiet HEAD -- . ':!docs/'; then
+    # Изменения только в docs/. Делаем локальный коммит, но не пушим.
+    log "Only doc changes found. Committing locally without push."
+    git add docs/
+    git commit -m "chore(tasks): update task status" || true
 else
-  echo ">> only docs changed; skipping commit"
+    # Есть изменения в коде. Коммитим всё и пушим.
+    log "Code changes detected. Committing and pushing."
+    git add -A
+    git commit -m "auto(codex): implement task" || true
+    git push origin HEAD:codex
+    log ">> Push successful"
 fi
 
 echo ">> === $(ts) codex_loop.sh done, RC=0 ==="
