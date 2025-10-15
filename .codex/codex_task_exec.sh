@@ -7,6 +7,8 @@ APP_DIR="apps/svc-enquiries"
 SRC_DIR="$APP_DIR/src"
 PKG="$APP_DIR/package.json"
 
+SCAN_LIMIT="${SCAN_LIMIT:-20}"  # сколько открытых задач просканировать за итерацию
+
 ts(){ date '+%F %T %z'; }
 log(){ echo "[$(ts)] $*"; }
 
@@ -18,10 +20,6 @@ ensure_file(){
     return 0
   fi
   return 1
-}
-
-json_has_key(){ # file keypath(with dots)
-  node -e 'const fs=require("fs");const f=process.argv[1];const k=process.argv[2].split(".");const j=JSON.parse(fs.readFileSync(f,"utf8"));let o=j;for(const p of k){if(!(p in o)){process.exit(2)}o=o[p]}process.exit(0)' "$1" "$2" >/dev/null 2>&1
 }
 
 json_write_key(){ # file key value(json)
@@ -37,14 +35,13 @@ json_write_key(){ # file key value(json)
 
 mark_done(){
   local pattern="$1"
-  local stamp
-  stamp="$(date '+%Y-%m-%d %H:%M')"
+  local stamp; stamp="$(date '+%Y-%m-%d %H:%M')"
   awk -v pat="$pattern" -v stamp="$stamp" '
     BEGIN{done=0; IGNORECASE=1}
     {
       if(!done && $0 ~ /^- \[ \] / && $0 ~ pat){
         sub(/^- \[ \] /,"- [x] ")
-        $0 = $0 "  — " stamp
+        if ($0 !~ /— [0-9]{4}-[0-9]{2}-[0-9]{2}/) { $0 = $0 "  — " stamp }
         done=1
       }
       print
@@ -52,25 +49,18 @@ mark_done(){
   ' docs/CODEX_TASKS.md > docs/.CODEX_TASKS.md.tmp && mv docs/.CODEX_TASKS.md.tmp docs/CODEX_TASKS.md
 }
 
-first_open_task(){
-  awk '
-    BEGIN{IGNORECASE=1}
-    /^- \[ \] /{print; exit}
+list_open_tasks(){
+  # печатает первые N открытых задач (строк целиком)
+  awk -v N="$SCAN_LIMIT" '
+    BEGIN{IGNORECASE=1; c=0}
+    /^- \[ \] /{print; if(++c>=N) exit}
   ' docs/CODEX_TASKS.md
-}
-
-ensure_node_tools(){
-  if ! command -v node >/dev/null 2>&1; then
-    log "Node.js is required for JSON edits (package.json)."
-    return 1
-  fi
-  return 0
 }
 
 # --- RULES ---
 
 rule_listen_port(){
-  # “Сервис слушает $PORT на 0.0.0.0” → apps/svc-enquiries/src/main.ts
+  # “Сервис слушает $PORT на 0.0.0.0”
   local main="$SRC_DIR/main.ts"
   ensure_file "$main" '/* bootstrap placeholder; will be overwritten by codex */' || true
   if ! grep -q 'listen(.*process.env.PORT' "$main" 2>/dev/null || ! grep -qi "0\.0\.0\.0" "$main"; then
@@ -158,7 +148,9 @@ TS
 
 rule_package_scripts(){
   # “В package.json: build/start/start:migrate”
-  ensure_node_tools || return 1
+  if ! command -v node >/dev/null 2>&1; then
+    log "Node.js is required for JSON edits (package.json)"; return 1
+  fi
   ensure_file "$PKG" '{ "name":"svc-enquiries","version":"0.0.0" }' || true
 
   json_write_key "$PKG" "scripts.build"         '"nest build || tsc -p tsconfig.build.json || true"'
@@ -206,34 +198,46 @@ YAML
   return 0
 }
 
-# --- SELECT FIRST OPEN TASK & EXECUTE ---
+# --- EXECUTION ---
 
 [ -f docs/CODEX_TASKS.md ] || { echo "# Tasks" > docs/CODEX_TASKS.md; }
 
-task="$(first_open_task || true)"
-if [ -z "${task:-}" ]; then
+log "Scanning first $SCAN_LIMIT open tasks…"
+mapfile -t OPEN < <(list_open_tasks)
+
+if [ "${#OPEN[@]}" -eq 0 ]; then
   log "no open tasks — nothing to do"
   exit 0
 fi
 
-log "first open task: $task"
-
 shopt -s nocasematch
-changed=0
-if [[ "$task" =~ (0\.0\.0\.0|PORT|\$PORT) ]]; then rule_listen_port && changed=1; fi
-if [[ "$task" =~ (health|/health) ]]; then rule_health_endpoint && changed=1; fi
-if [[ "$task" =~ (package\.json|scripts|build|start) ]]; then rule_package_scripts && changed=1; fi
-if [[ "$task" =~ (DigitalOcean|App Platform|DO|app\.ya?ml) ]]; then rule_do_yaml && changed=1; fi
+for t in "${OPEN[@]}"; do
+  log "consider: $t"
+
+  # пропускаем явные заглушки-заголовки
+  if [[ "$t" =~ ^-.\[.\].*(требования|requirements|общие|general)\:?\s*$ ]]; then
+    log "skip placeholder header"; continue
+  fi
+
+  changed=0
+  if [[ "$t" =~ (0\.0\.0\.0|PORT|\$PORT) ]]; then rule_listen_port && changed=1; fi
+  if [[ "$t" =~ (health|/health) ]]; then rule_health_endpoint && changed=1; fi
+  if [[ "$t" =~ (package\.json|scripts|build|start) ]]; then rule_package_scripts && changed=1; fi
+  if [[ "$t" =~ (DigitalOcean|App Platform|DO|app\.ya?ml) ]]; then rule_do_yaml && changed=1; fi
+
+  if [ "$changed" -eq 1 ]; then
+    log "applied rule for: $t"
+    # отметить выполненной именно ЭТУ строку
+    if [[ "$t" =~ (health|/health) ]]; then mark_done "health"; fi
+    if [[ "$t" =~ (0\.0\.0\.0|PORT|\$PORT) ]]; then mark_done "PORT|0\.0\.0\.0"; fi
+    if [[ "$t" =~ (package\.json|scripts|build|start) ]]; then mark_done "package\\.json|scripts|build|start"; fi
+    if [[ "$t" =~ (DigitalOcean|App Platform|DO|app\.ya?ml) ]]; then mark_done "DigitalOcean|App Platform|app\\.ya?ml"; fi
+    shopt -u nocasematch
+    exit 0
+  fi
+done
 shopt -u nocasematch
 
-if [ "$changed" -eq 1 ]; then
-  if [[ "$task" =~ (health|/health) ]]; then mark_done "health"; fi
-  if [[ "$task" =~ (0\.0\.0\.0|PORT|\$PORT) ]]; then mark_done "PORT|0\.0\.0\.0"; fi
-  if [[ "$task" =~ (package\.json|scripts|build|start) ]]; then mark_done "package\\.json|scripts|build|start"; fi
-  if [[ "$task" =~ (DigitalOcean|App Platform|DO|app\.ya?ml) ]]; then mark_done "DigitalOcean|App Platform|app\\.ya?ml"; fi
-  exit 0
-else
-  log "no matching rule for first open task — skipping"
-  exit 0
-fi
+log "no matching rule among first $SCAN_LIMIT tasks — skipping"
+exit 0
 
