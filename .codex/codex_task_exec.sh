@@ -75,7 +75,8 @@ async function bootstrap() {
 }
 bootstrap();
 TS
-    log "Updated apps/svc-enquiries/src/main.ts to listen on $PORT and 0.0.0.0"
+    # ВАЖНО: экранированный доллар, чтобы не читать незаданную $PORT
+    log "Updated apps/svc-enquiries/src/main.ts to listen on \$PORT and 0.0.0.0"
     return 0
   fi
   return 1
