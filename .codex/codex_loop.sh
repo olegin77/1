@@ -10,7 +10,7 @@ SPEC_FILE="docs/TECH_SPEC.md"
 ts(){ date '+%F %T %z'; }
 log(){ echo >&2 "[$(ts)] $*"; }
 
-# --- Ядро Исполнителя (бывшие "правила") ---
+# --- Ядро Исполнителя ---
 ensure_service_skeleton() {
     local svc_name="$1"
     local app_dir="apps/$svc_name"
@@ -89,7 +89,8 @@ NEXT_ACTION_DESC=""
 while IFS= read -r svc_name; do
     task_desc="Создать каркас для сервиса $svc_name"
     # *** ИСПРАВЛЕНИЕ ЗДЕСЬ ***
-    if [[ ! -v COMPLETED_TASKS[$task_desc] ]]; then
+    # Правильная проверка на существование ключа в ассоциативном массиве
+    if ! [[ -v "COMPLETED_TASKS[$task_desc]" ]]; then
         NEXT_ACTION="ensure_service_skeleton $svc_name"
         NEXT_ACTION_DESC="$task_desc"
         break
@@ -105,7 +106,8 @@ fi
 log "Next action determined: $NEXT_ACTION_DESC"
 
 CHANGES_MADE=0
-eval "$NEXT_ACTION" && CHANGES_MADE=1
+# Выполняем действие; если оно возвращает 1 (уже существует), то CHANGES_MADE останется 0
+eval "$NEXT_ACTION" || CHANGES_MADE=0 && CHANGES_MADE=1
 
 if [[ "$CHANGES_MADE" -eq 0 ]]; then
     log "Action resulted in no changes. Skipping."
