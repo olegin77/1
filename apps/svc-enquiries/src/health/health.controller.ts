@@ -3,11 +3,9 @@ import { HealthService } from './health.service';
 
 @Controller('health')
 export class HealthController {
-  constructor(private readonly svc: HealthService) {}
-
+  constructor(private readonly health: HealthService) {}
   @Get()
-  async ok() {
-    const db = await this.svc.checkDb();
-    return { status: 'ok', db };
+  async get() {
+    return await this.health.check();
   }
 }

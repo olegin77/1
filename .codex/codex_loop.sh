@@ -4,39 +4,47 @@ set -Eeuo pipefail
 export TZ=:Asia/Tashkent
 
 ts(){ date '+%F %T %z'; }
+log(){ echo >&2 "[$(ts)] $*"; }
 
-echo ">> === $(ts) codex_loop.sh start (exec-tasks) ==="
+echo ">> === $(ts) codex_loop.sh start ==="
 
-git fetch --prune origin
-git checkout -B codex origin/codex
-git pull --ff-only origin codex || { git reset --hard origin/codex; git clean -fdx; }
+# 1. Синхронизируемся с репозиторием, не удаляя локальные изменения
+git checkout -B codex
+git fetch origin codex
+git reset --hard origin/codex # Начинаем с чистого состояния от удаленного репозитория
+log "Repository synced with origin/codex"
 
-# сидер — дозаправка задач (если нужен; файл существует — ок)
+# 2. Запускаем сидер для пополнения задач
 if [ -x .codex/codex_seed_from_spec.py ]; then
+  log "Running task seeder..."
   python3 .codex/codex_seed_from_spec.py || true
-  git add docs/CODEX_TASKS.md || true
-  git commit -m "auto(seed): задачи из TECH_SPEC (threshold)" || true
 fi
 
-echo ">> executing first open task"
-before="$(git status --porcelain)"
+# 3. Запускаем исполнителя
 if [ -x ".codex/codex_task_exec.sh" ]; then
+  log "Running task executor..."
   .codex/codex_task_exec.sh || true
 else
-  echo "!! executor not found: .codex/codex_task_exec.sh"
+  log "!! Executor not found: .codex/codex_task_exec.sh"
 fi
-after="$(git status --porcelain)"
 
-# коммитим ТОЛЬКО если есть изменения НЕ в docs/
-if git diff --name-only | grep -qvE '^(docs/|README|LICENSE)'; then
-  git add -A
-  git commit -m "auto(codex): iteration" || true
-  git push origin HEAD:codex
-  echo ">> commit & push done"
+# 4. Если после всех операций есть хоть какие-то изменения, коммитим и пушим.
+if ! git diff --quiet --exit-code; then
+    log "Changes detected. Committing and pushing..."
+    git add -A
+    
+    # Определяем сообщение коммита
+    if git diff --quiet --staged -- . ':!docs/'; then
+        git commit -m "chore(tasks): update task status"
+    else
+        git commit -m "auto(codex): implement task"
+    fi
+    
+    git push origin HEAD:codex
+    log ">> Push successful"
 else
-  echo ">> only docs changed; skipping commit"
+    log "No changes detected after execution. Exiting."
 fi
 
 echo ">> === $(ts) codex_loop.sh done, RC=0 ==="
 exit 0
-

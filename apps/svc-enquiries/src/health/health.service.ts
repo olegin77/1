@@ -2,12 +2,9 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class HealthService {
-  async checkDb(): Promise<boolean> {
-    try {
-      // TODO: подключить конкретную БД; временно просто имитируем ping
-      return true;
-    } catch {
-      return false;
-    }
+  async check() {
+    // TODO: wire real DB ping when Prisma present
+    const db = false;
+    return { status: 'ok', db };
   }
 }
