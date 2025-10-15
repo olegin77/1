@@ -97,6 +97,7 @@ if [[ "$task_text" == *"создать каркас"* ]] && [[ "$task_text" =~ (
         ACTION_TAKEN=1
     fi
 fi
+# Сюда можно будет добавлять другие 'elif' для новых типов задач
 
 if [[ "$ACTION_TAKEN" -eq 0 ]]; then
     log "No rule matched for task: '$task_text'."
