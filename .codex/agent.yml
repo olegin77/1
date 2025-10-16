@@ -23,3 +23,4 @@ agent:
   sandbox:
     allow_exec: ["codex","bash","git","node","pnpm","script"]
     no_tty: true
+
