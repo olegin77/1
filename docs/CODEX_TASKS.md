@@ -247,7 +247,7 @@ model RankSignal {
 ---
 
 ## Этап 2: Аутентификация и роли — `apps/svc-auth`
-- [ ] Зависимости: `@nestjs/jwt`, `argon2`, `class-validator`, `passport-jwt`.
+- [x] Зависимости: `@nestjs/jwt`, `argon2`, `class-validator`, `passport-jwt`. — 2025-10-16 22:02:50 +0500
 - [ ] Файлы:
 ```
 apps/svc-auth/src/app.module.ts
