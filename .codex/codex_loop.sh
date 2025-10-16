@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: BULLETPROOF-V6
+# ВЕРСИЯ: BULLETPROOF-V6 (С ГЛОБАЛЬНОЙ ЛОВУШКОЙ ОШИБОК)
 set -Eeuo pipefail
 
 # --- Глобальная ловушка ошибок ---
-# Если скрипт упадет, эта команда сообщит, где и почему.
+# Если скрипт упадет в любом месте, эта команда выполнится и сообщит нам, где и почему.
 trap 'log "!!! FATAL ERROR: Script exited on line $LINENO with status $?."' ERR
 
 export TZ=:Asia/Tashkent
@@ -30,7 +30,6 @@ mark_done(){
 }
 
 # --- Ядро Исполнителя ---
-
 ensure_service_skeleton() {
     local svc_name="$1"; local app_dir="apps/$svc_name"; [ -d "$app_dir" ] && return 1
     log "ACTION: Scaffolding new service: $svc_name"
@@ -80,14 +79,11 @@ fi
 task_text=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 log "STEP 2: Found task to execute: '$task_text'"
 
-CODE_CHANGED=0
-
 # Правило №1: Создание каркаса
 if [[ "$task_text" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
     log "STEP 3: Matched rule 'ensure_service_skeleton'"
-    if ensure_service_skeleton "${BASH_REMATCH[1]}"; then CODE_CHANGED=1; fi
+    ensure_service_skeleton "${BASH_REMATCH[1]}" || log "INFO: Skeleton already exists, no changes made."
 else
-    # ЗАЩИТА ОТ ЗАЦИКЛИВАНИЯ: Если правило не найдено, сообщаем об этом
     log "STEP 3: No rule matched for this task. Marking as done to proceed to the next."
 fi
 
