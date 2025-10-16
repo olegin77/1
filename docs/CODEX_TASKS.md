@@ -34,7 +34,7 @@ DEFAULT_LOCALE=ru
 ## Этап 1: База данных и Prisma (пакет `packages/prisma`)
 - [x] Создать пакет `packages/prisma` с единой схемой и генерацией типов.
 - [x] Настроить генераторы: `client`, `nestjs-zod`, `er` (диаграмма). — 2025-10-16 21:13:52 +0500
-- [ ] Добавить миграции и скрипты: `pnpm -w prisma:migrate`, `pnpm -w prisma:generate`.
+- [x] Добавить миграции и скрипты: `pnpm -w prisma:migrate`, `pnpm -w prisma:generate`. — 2025-10-16 21:20:02 +0500
 
 **`packages/prisma/schema.prisma` (полная MVP‑схема):**
 ```prisma
