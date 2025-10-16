@@ -10,7 +10,7 @@
 - [x] svc-catalog: создать каркас NestJS-сервиса (app.module, main.ts, health endpoint) — 2025-10-16 03:40:01 +0500
 - [x] DevOps: создать базовый Dockerfile для сервиса `svc-vendors` — 2025-10-16 15:40:02 +0500
 - [x] DevOps: создать базовый Dockerfile для сервиса `svc-auth` — 2025-10-16 16:00:02 +0500
-- [ ] DevOps: создать базовый Dockerfile для сервиса `svc-guests`
+- [x] DevOps: создать базовый Dockerfile для сервиса `svc-guests` — 2025-10-16 16:20:01 +0500
 - [ ] DevOps: добавить сервис `svc-vendors` в конфигурационный файл `do/app.yaml`
 - [ ] DevOps: добавить сервис `svc-auth` в `do/app.yaml`
 - [ ] DevOps: добавить сервис `svc-guests` в `do/app.yaml`
