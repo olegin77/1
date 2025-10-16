@@ -13,7 +13,7 @@
 - [x] DevOps: создать базовый Dockerfile для сервиса `svc-guests` — 2025-10-16 16:20:01 +0500
 - [x] DevOps: добавить сервис `svc-vendors` в конфигурационный файл `do/app.yaml` — 2025-10-16 19:20:02 +0500
 - [x] DevOps: добавить сервис `svc-auth` в `do/app.yaml` — 2025-10-16 19:40:02 +0500
-- [ ] DevOps: добавить сервис `svc-guests` в `do/app.yaml`
+- [x] DevOps: добавить сервис `svc-guests` в `do/app.yaml` — 2025-10-16 20:00:01 +0500
 
 ## Этап 2: Модели Данных (Prisma)
 
