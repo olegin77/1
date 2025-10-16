@@ -1,3 +1,4 @@
 {
+ "tasksFile": "docs/CODEX_TASKS.md",
   "model": "gpt-5-codex"
 }

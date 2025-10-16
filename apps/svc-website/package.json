@@ -1,0 +1,33 @@
+{
+  "name": "svc-website",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p $PORT",
+    "build": "next build",
+    "start": "next start -p $PORT --hostname 0.0.0.0",
+    "lint": "next lint"
+  },
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
+  },
+  "dependencies": {
+    "next": "15.5.4",
+    "next-intl": "^3.24.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.12.12",
+    "@types/react": "18.3.10",
+    "@types/react-dom": "18.3.0",
+    "typescript": "5.6.3"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "@types/react": "18.3.10",
+    "@types/react-dom": "18.3.0"
+  }
+}

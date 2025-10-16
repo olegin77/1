@@ -1,7 +1,0 @@
-{
-  "name": "svc-w",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": { "build": "tsc -p tsconfig.build.json", "start": "node dist/main.js" },
-  "engines": { "node": ">=18" }
-}
