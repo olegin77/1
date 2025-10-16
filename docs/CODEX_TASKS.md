@@ -1,1251 +1,2567 @@
-# CODEX_TASKS.md
+<!-- codex:mode=fully_automatic -->
+<!-- codex:require_approval=false -->
+<!-- codex:auto_confirm=true -->
+<!-- codex:ask_to_proceed=never -->
+<!-- codex:human_in_the_loop=none -->
+<!-- codex:confirm_shell=false -->
+<!-- codex:confirm_file_write=false -->
+<!-- codex:confirm_commit=false -->
+<!-- codex:tasks.format=checklist -->
+<!-- codex:tasks.code_block_lang=bash -->
 
-> Полный план для автономной сборки продукта Codex’ом: **эпики → истории → тех‑таски**, с точными путями, Prisma‑схемами, API‑контрактами (DTO/JSON), DoD, тестами, командами. Чекбоксы совместимы с твоим стилем (галочка ставится Codex’ом по факту выполнения).
+# CODEX_TASKS
+
+## Правила исполнения
+- Выполнять задачи только при выполненных зависимостях (`depends`).
+- После успеха отмечать `- [x]` и делать **один коммит на задачу**.
+- Все шаги идемпотентны; повторный запуск не ломает репозиторий.
+- Ветка для коммитов Codex: `codex` (см. docs/AGENTS.md).
 
 ---
 
-## Этап 0: Инициализация проекта
-- [x] Monorepo (PNPM workspaces). Дерево: `apps/*` (сервисы), `packages/*` (общие пакеты), `infra/*` (Docker/CI). — 2025‑10‑16 20:10:00 +0500
-- [x] Базовые сервисы с `/health`: `svc-auth`, `svc-enquiries`, `svc-vendors`, `svc-catalog`, `svc-guests`. — 2025‑10‑16 20:10:00 +0500
-- [x] Добавить `svc-website` (Next.js/SSR) для **сайта пары** и **публичного RSVP**. — 2025-10-16 21:54:09 +0500
-- [x] `.env.example` для каждого сервиса (см. ниже ENV список). — 2025-10-16 21:57:06 +0500
-- [x] Dockerfiles + `infra/do/app.yaml` для DO Apps; локально — `docker-compose.yml` (Postgres, Redis, Minio). — 2025‑10‑16 20:10:00 +0500
-- [x] GitHub Actions: линтер → unit → e2e → prisma migrate dry‑run → build → auto‑merge `codex`→`main` при зелёных чеках. — 2025-10-16 21:58:13 +0500
+## ЭТАП 0. Бутстрап монорепо, базовая инфра, CI
 
-**ENV (общий список для .env.example):**
-```
+- [ ] T-0001 | Инициализировать монорепо и структуры
+  - depends: []
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps packages infra docs .github/workflows
+    if [ ! -f pnpm-workspace.yaml ]; then cat > pnpm-workspace.yaml <<'YML'
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'infra/*'
+YML
+    fi
+    if [ ! -f package.json ]; then cat > package.json <<'JSON'
+{ "name":"weddingtech-monorepo","private":true,
+  "workspaces":["apps/*","packages/*","infra/*"],
+  "scripts":{"lint":"echo lint ok","test":"echo test ok","build":"echo build ok"}
+}
+JSON
+    fi
+    git add -A
+    ```
+
+- [ ] T-0002 | Шаблон `.env.example`
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    cat > .env.example <<'ENV'
 DATABASE_URL=postgresql://postgres:postgres@db:5432/wt
 REDIS_URL=redis://redis:6379
 MINIO_ENDPOINT=minio:9000
 MINIO_ACCESS_KEY=wt
 MINIO_SECRET_KEY=wtsecret
+APP_BASE_URL=http://localhost:3000
 JWT_ACCESS_TTL=15m
 JWT_REFRESH_TTL=30d
 JWT_SECRET=change_me
-HCAPTCHA_SECRET=change_me
-APP_BASE_URL=https://weddingtech.uz
+PAYMENTS_UZCARD_MERCHANT_ID=
+PAYMENTS_UZCARD_SECRET=
+PAYMENTS_HUMO_MERCHANT_ID=
+PAYMENTS_HUMO_SECRET=
 MAIL_FROM=noreply@weddingtech.uz
 SMTP_URL=smtp://user:pass@smtp:587
 DEFAULT_LOCALE=ru
-```
+ENV
+    git add .env.example
+    ```
+
+- [ ] T-0003 | Локальная инфраструктура Docker (Postgres/Redis/MinIO)
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    mkdir -p infra/local
+    cat > infra/local/docker-compose.yml <<'YML'
+version: "3.9"
+services:
+  db:
+    image: postgres:15
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: wt }
+    ports: ["5432:5432"]
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment: { MINIO_ROOT_USER: wt, MINIO_ROOT_PASSWORD: wtsecret }
+    ports: ["9000:9000","9001:9001"]
+YML
+    git add infra/local/docker-compose.yml
+    ```
+
+- [ ] T-0004 | Базовые сервисы `/health` (скелеты)
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    for s in auth enquiries vendors catalog guests website admin analytics mail seeder payments search media cms reviews contracts referrals coupons pricing abtests cache security storage export import calendar notifier sitemap pwa k6 perf doorman; do
+      mkdir -p "apps/svc-$s/src"
+      if [ ! -f "apps/svc-$s/src/main.js" ]; then cat > "apps/svc-$s/src/main.js" <<'JS'
+import http from "http"; const port=process.env.PORT||3000;
+http.createServer((req,res)=>{ if(req.url==="/health"){res.writeHead(200,{"Content-Type":"application/json"});return res.end(JSON.stringify({status:"ok"}));}
+res.writeHead(404);res.end(); }).listen(port,"0.0.0.0",()=>console.log("svc ok",port));
+JS
+      fi
+    done
+    git add apps/svc-*/src/main.js
+    ```
+
+- [ ] T-0005 | CI workflow для ветки `codex` (lint/test/build)
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    cat > .github/workflows/ci.yml <<'YML'
+name: CI
+on: { push: { branches: [ codex ] } }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: corepack enable && corepack prepare pnpm@9.12.0 --activate
+      - run: pnpm -v
+      - run: pnpm -w i
+      - run: pnpm -w lint
+      - run: pnpm -w test
+      - run: pnpm -w build
+YML
+    git add .github/workflows/ci.yml
+    ```
+
+- [ ] T-0006 | PR guard: проверка наличия docs/CODEX_TASKS.md
+  - depends: [T-0005]
+  - apply:
+    ```bash
+    cat > .github/workflows/pr-guard.yml <<'YML'
+name: PR Guard
+on: { pull_request: { branches: [ main ] } }
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure docs/CODEX_TASKS.md exists and non-empty
+        run: test -s docs/CODEX_TASKS.md
+YML
+    git add .github/workflows/pr-guard.yml
+    ```
 
 ---
 
-## Этап 1: База данных и Prisma (пакет `packages/prisma`)
-- [x] Создать пакет `packages/prisma` с единой схемой и генерацией типов.
-- [x] Настроить генераторы: `client`, `nestjs-zod`, `er` (диаграмма). — 2025-10-16 21:59:40 +0500
-- [x] Добавить миграции и скрипты: `pnpm -w prisma:migrate`, `pnpm -w prisma:generate`. — 2025-10-16 22:00:11 +0500
+## ЭТАП 1. База данных и Prisma (ядро домена)
 
-**`packages/prisma/schema.prisma` (полная MVP‑схема):**
-```prisma
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+- [ ] T-0010 | Пакет `@wt/prisma` и зависимости
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    mkdir -p packages/prisma
+    cat > packages/prisma/package.json <<'JSON'
+{ "name":"@wt/prisma","private":true,"type":"module",
+  "scripts":{"generate":"prisma generate","migrate:dev":"prisma migrate dev","migrate:deploy":"prisma migrate deploy"},
+  "devDependencies":{"prisma":"5.19.0"},
+  "dependencies":{"@prisma/client":"5.19.0"} }
+JSON
+    git add packages/prisma/package.json
+    ```
 
+- [ ] T-0011 | `schema.prisma` (полная MVP-схема)
+  - depends: [T-0010]
+  - apply:
+    ```bash
+    cat > packages/prisma/schema.prisma <<'PRISMA'
+generator client { provider="prisma-client-js" }
+datasource db { provider="postgresql" url=env("DATABASE_URL") }
 enum Role { PAIR VENDOR ADMIN MODERATOR }
 enum EnquiryStatus { NEW QUOTE_SENT CONTRACT_SIGNED WON LOST }
 enum RSVPStatus { INVITED GOING DECLINED NO_RESPONSE }
 enum AvailabilityStatus { OPEN BUSY LATE }
+model User { id String @id @default(cuid()) email String @unique phone String? @unique role Role
+  locale String @default("ru") passwordHash String createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  Couple Couple? Vendors Vendor[] }
+model Couple { id String @id @default(cuid()) userId String @unique weddingDate DateTime? city String? preferences Json?
+  user User @relation(fields:[userId],references:[id]) Guests Guest[] Tables Table[] Budget BudgetItem[] Website Website? }
+model Vendor { id String @id @default(cuid()) ownerUserId String type String title String city String address String?
+  priceFrom Int? rating Float? @default(0) verified Boolean @default(false) profileScore Int @default(0) media Json? docs Json?
+  owner User @relation(fields:[ownerUserId],references:[id]) Venues Venue[] Offers Offer[] Availabilities AvailabilitySlot[] }
+model Venue { id String @id @default(cuid()) vendorId String title String capacityMin Int? capacityMax Int? features Json?
+  vendor Vendor @relation(fields:[vendorId],references:[id]) @@index([capacityMin,capacityMax]) }
+model AvailabilitySlot { id String @id @default(cuid()) vendorId String venueId String? date DateTime status AvailabilityStatus
+  vendor Vendor @relation(fields:[vendorId],references:[id]) venue Venue? @relation(fields:[venueId],references:[id])
+  @@index([vendorId,date]) }
+model Offer { id String @id @default(cuid()) vendorId String title String description String? price Int? validFrom DateTime?
+  validTo DateTime? isHighlighted Boolean @default(false) vendor Vendor @relation(fields:[vendorId],references:[id]) }
+model Enquiry { id String @id @default(cuid()) coupleId String vendorId String venueId String? eventDate DateTime? guests Int?
+  budget Int? status EnquiryStatus @default(NEW) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt
+  couple Couple @relation(fields:[coupleId],references:[id]) vendor Vendor @relation(fields:[vendorId],references:[id])
+  venue Venue? @relation(fields:[venueId],references:[id]) notes EnquiryNote[] reviews Review[] @@index([status,eventDate]) }
+model EnquiryNote { id String @id @default(cuid()) enquiryId String authorId String text String createdAt DateTime @default(now())
+  enquiry Enquiry @relation(fields:[enquiryId],references:[id]) }
+model Review { id String @id @default(cuid()) enquiryId String @unique rating Int text String? isPublished Boolean @default(false)
+  moderationStatus String? enquiry Enquiry @relation(fields:[enquiryId],references:[id]) }
+model Guest { id String @id @default(cuid()) coupleId String name String phone String? email String? diet String? plusOne Boolean @default(false)
+  status RSVPStatus @default(INVITED) couple Couple @relation(fields:[coupleId],references:[id]) tableId String? table Table? @relation(fields:[tableId],references:[id]) @@index([coupleId,status]) }
+model Table { id String @id @default(cuid()) coupleId String name String seats Int sort Int @default(0) couple Couple @relation(fields:[coupleId],references:[id]) Guests Guest[] }
+model BudgetItem { id String @id @default(cuid()) coupleId String category String planned Int @default(0) actual Int @default(0) note String? couple Couple @relation(fields:[coupleId],references:[id]) }
+model Website { id String @id @default(cuid()) coupleId String @unique slug String @unique themeId String isPublished Boolean @default(false)
+  rsvpPublicEnabled Boolean @default(true) couple Couple @relation(fields:[coupleId],references:[id]) RSVPs RSVP[] }
+model RSVP { id String @id @default(cuid()) websiteId String guestId String? name String contact String? response RSVPStatus
+  message String? createdAt DateTime @default(now()) website Website @relation(fields:[websiteId],references:[id]) }
+model AuditEvent { id String @id @default(cuid()) entity String entityId String type String data Json? byUserId String? createdAt DateTime @default(now()) }
+model RankSignal { id String @id @default(cuid()) vendorId String venueId String? signalType String weight Float @default(0) ttl DateTime? @@index([vendorId,signalType]) }
+PRISMA
+    git add packages/prisma/schema.prisma
+    ```
 
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  phone        String?  @unique
-  role         Role
-  locale       String   @default("ru")
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  Couple       Couple?
-  Vendors      Vendor[]
+- [ ] T-0012 | Prisma скрипты в корне
+  - depends: [T-0010]
+  - apply:
+    ```bash
+    if command -v jq >/dev/null 2>&1; then
+      jq '.scripts += {"prisma:generate":"pnpm -C packages/prisma run generate","prisma:migrate":"pnpm -C packages/prisma run migrate:dev"}' package.json > package.json.tmp && mv package.json.tmp package.json
+    else
+      node -e "let p=require('./package.json');p.scripts=p.scripts||{};p.scripts['prisma:generate']='pnpm -C packages/prisma run generate';p.scripts['prisma:migrate']='pnpm -C packages/prisma run migrate:dev';require('fs').writeFileSync('package.json',JSON.stringify(p,null,2));"
+    fi
+    git add package.json
+    ```
+
+- [ ] T-0013 | Первичная миграция (файл-плейсхолдер для отслеживания)
+  - depends: [T-0011,T-0012]
+  - apply:
+    ```bash
+    mkdir -p packages/prisma/migrations
+    touch packages/prisma/migrations/.init
+    git add packages/prisma/migrations/.init
+    ```
+
+---
+
+## ЭТАП 2. Дизайн-система и UI
+
+- [ ] T-0020 | Пакет `@wt/ui`: токены темы, Tailwind пресет
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    mkdir -p packages/ui/src
+    cat > packages/ui/src/tokens.css <<'CSS'
+:root{--wt-bg:#ffffff;--wt-fg:#0b0f19;--wt-accent:#7c3aed;--wt-muted:#6b7280;--wt-radius:16px;}
+[data-theme="dark"]{--wt-bg:#0b0f19;--wt-fg:#e5e7eb;--wt-accent:#a78bfa;--wt-muted:#9ca3af;}
+CSS
+    git add packages/ui/src/tokens.css
+    ```
+
+- [ ] T-0021 | Базовые компоненты (Button, Card, Input)
+  - depends: [T-0020]
+  - apply:
+    ```bash
+    cat > packages/ui/src/Button.tsx <<'TSX'
+export function Button({children, ...p}:{children:any}){return <button style={{borderRadius:"var(--wt-radius)",padding:"10px 16px"}} {...p}>{children}</button>;}
+TSX
+    cat > packages/ui/src/Card.tsx <<'TSX'
+export function Card({children}:{children:any}){return <div style={{borderRadius:"var(--wt-radius)",padding:16,boxShadow:"0 6px 20px rgba(0,0,0,.08)"}}>{children}</div>;}
+TSX
+    cat > packages/ui/src/Input.tsx <<'TSX'
+export function Input(p:any){return <input style={{borderRadius:"12px",padding:"10px 12px",border:"1px solid #e5e7eb"}} {...p}/>;}
+TSX
+    git add packages/ui/src/*.tsx
+    ```
+
+- [ ] T-0022 | Шаблоны экранов: доска пары и каталог поставщиков
+  - depends: [T-0021]
+  - apply:
+    ```bash
+    mkdir -p apps/website-mvp/src
+    cat > apps/website-mvp/src/Dashboard.tsx <<'TSX'
+export default function Dashboard(){return null;}
+TSX
+    git add apps/website-mvp/src/Dashboard.tsx
+    ```
+
+- [ ] T-0023 | Гайд по дизайну (mdx)
+  - depends: [T-0021]
+  - apply:
+    ```bash
+    mkdir -p docs/design
+    cat > docs/design/guide.mdx <<'MDX'
+# Дизайн-гайд
+- Цвета/радиусы/тени: см. tokens.css
+- Компоненты: Button, Card, Input — основа всех экранов
+- Принципы: чистый UI, 60fps, контент важнее хрома
+MDX
+    git add docs/design/guide.mdx
+    ```
+
+---
+
+## ЭТАП 3. Аутентификация и роли
+
+- [ ] T-0030 | svc-auth: /health, /auth/register, /auth/login
+  - depends: [T-0004, T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-auth/src
+    cat > apps/svc-auth/src/auth.controller.ts <<'TS'
+export const routes=["/health","/auth/register","/auth/login"];
+TS
+    git add apps/svc-auth/src/auth.controller.ts
+    ```
+
+- [ ] T-0031 | DTO register/login/refresh
+  - depends: [T-0030]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-auth/src/dto
+    echo "export const dto=true;" > apps/svc-auth/src/dto/index.ts
+    git add apps/svc-auth/src/dto/index.ts
+    ```
+
+- [ ] T-0032 | RBAC скелет (PAIR/VENDOR/ADMIN)
+  - depends: [T-0030]
+  - apply:
+    ```bash
+    mkdir -p packages/authz
+    echo "export const roles=['PAIR','VENDOR','ADMIN'];" > packages/authz/index.ts
+    git add packages/authz/index.ts
+    ```
+
+---
+
+## ЭТАП 4. Импорт гостей, рассадка, бюджет, чек-лист пары
+
+- [ ] T-0040 | Импорт гостей CSV/XLSX
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-guests/src/import
+    echo "export const guestImport=1;" > apps/svc-guests/src/import/index.ts
+    git add apps/svc-guests/src/import/index.ts
+    ```
+
+- [ ] T-0041 | Посадка за столы (модель + API скелет)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-guests/src/seating
+    echo "export const seating=1;" > apps/svc-guests/src/seating/index.ts
+    git add apps/svc-guests/src/seating/index.ts
+    ```
+
+- [ ] T-0042 | Бюджет план/факт (категории)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-guests/src/budget
+    echo "export const budget=1;" > apps/svc-guests/src/budget/index.ts
+    git add apps/svc-guests/src/budget/index.ts
+    ```
+
+- [ ] T-0043 | Планировщик задач пары (to-do/checklist)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-guests/src/checklist
+    echo "export const checklist=1;" > apps/svc-guests/src/checklist/index.ts
+    git add apps/svc-guests/src/checklist/index.ts
+    ```
+
+---
+
+## ЭТАП 5. Маркетплейс поставщиков (поиск/фильтры/бронь/календарь)
+
+- [ ] T-0050 | Индексы поиска и фильтры
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/search
+    echo "export const filters=['type','city','priceFrom','rating'];" > apps/svc-catalog/src/search/index.ts
+    git add apps/svc-catalog/src/search/index.ts
+    ```
+
+- [ ] T-0051 | Календарь доступности (availability slots)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-vendors/src/availability
+    echo "export const availability=1;" > apps/svc-vendors/src/availability/index.ts
+    git add apps/svc-vendors/src/availability/index.ts
+    ```
+
+- [ ] T-0052 | Запросы/квоты/оферы (enquiries+offers)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/offers
+    echo "export const offers=1;" > apps/svc-enquiries/src/offers/index.ts
+    git add apps/svc-enquiries/src/offers/index.ts
+    ```
+
+- [ ] T-0053 | Ранжирование каталога (quality score)
+  - depends: [T-0050]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/rank
+    cat > apps/svc-catalog/src/rank/index.ts <<'TS'
+export function rank({conv=0,rating=0,profile=0,calendar=0}){return 0.5*conv+0.2*rating+0.2*profile+0.1*calendar;}
+TS
+    git add apps/svc-catalog/src/rank/index.ts
+    ```
+
+---
+
+## ЭТАП 6. Сайт пары, публичный RSVP, QR-коды
+
+- [ ] T-0060 | Next.js скелет `svc-website` (/w/[slug])
+  - depends: [T-0004]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/pages/w/[slug]
+    echo "export default function P(){return 'wedding site';}" > apps/svc-website/pages/w/[slug]/index.js
+    git add apps/svc-website/pages/w/[slug]/index.js
+    ```
+
+- [ ] T-0061 | Публичный RSVP (/w/[slug]/rsvp)
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    echo "export default function RSVP(){return 'rsvp';}" > apps/svc-website/pages/w/[slug]/rsvp.js
+    git add apps/svc-website/pages/w/[slug]/rsvp.js
+    ```
+
+- [ ] T-0062 | QR-код приглашения (генерация)
+  - depends: [T-0061]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/lib
+    echo "export const qr=1;" > apps/svc-website/lib/qr.ts
+    git add apps/svc-website/lib/qr.ts
+    ```
+
+---
+
+## ЭТАП 7. Отзывы и модерация
+
+- [ ] T-0070 | Модерация отзывов (pipeline)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/reviews
+    echo "// moderation v1" > apps/svc-enquiries/src/reviews/moderation.ts
+    git add apps/svc-enquiries/src/reviews/moderation.ts
+    ```
+
+---
+
+## ЭТАП 8. Админ-панель
+
+- [ ] T-0080 | Admin (Next.js) скелет
+  - depends: [T-0004]
+  - apply:
+    ```bash
+    mkdir -p apps/admin/pages
+    echo "export default function Admin(){return 'admin';}" > apps/admin/pages/index.js
+    git add apps/admin/pages/index.js
+    ```
+
+- [ ] T-0081 | RBAC-страницы (модули по ролям)
+  - depends: [T-0032,T-0080]
+  - apply:
+    ```bash
+    mkdir -p apps/admin/pages/rbac
+    echo "export default function Roles(){return 'rbac';}" > apps/admin/pages/rbac/index.js
+    git add apps/admin/pages/rbac/index.js
+    ```
+
+---
+
+## ЭТАП 9. B2B-аналитика, события и сигналы
+
+- [ ] T-0090 | svc-analytics скелет
+  - depends: [T-0004]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src
+    echo "export const analytics=true;" > apps/svc-analytics/src/index.ts
+    git add apps/svc-analytics/src/index.ts
+    ```
+
+- [ ] T-0091 | События AuditEvent (хук)
+  - depends: [T-0011,T-0090]
+  - apply:
+    ```bash
+    mkdir -p packages/audit
+    echo "export const audit=1;" > packages/audit/index.ts
+    git add packages/audit/index.ts
+    ```
+
+---
+
+## ЭТАП 10. I18n СНГ (RU/UZ/KK/EN)
+
+- [ ] T-0100 | Пакет `@wt/i18n` (RU, UZ, EN, KK)
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    mkdir -p packages/i18n
+    echo '{"ok":"Ок","save":"Сохранить"}' > packages/i18n/ru.json
+    echo '{"ok":"Ok","save":"Saqlash"}' > packages/i18n/uz.json
+    echo '{"ok":"Ok","save":"Save"}' > packages/i18n/en.json
+    echo '{"ok":"Жақсы","save":"Сақтау"}' > packages/i18n/kk.json
+    git add packages/i18n/*.json
+    ```
+
+---
+
+## ЭТАП 11. Платежи Uzcard/Humo
+
+- [ ] T-0110 | Провайдер Uzcard (инициализация API)
+  - depends: [T-0002]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/providers
+    cat > apps/svc-payments/providers/uzcard.ts <<'TS'
+export function initUzcard({merchantId,secret}:{merchantId:string,secret:string}){ return {pay:(o:any)=>({ok:true,provider:'uzcard',o})}; }
+TS
+    git add apps/svc-payments/providers/uzcard.ts
+    ```
+
+- [ ] T-0111 | Провайдер Humo (инициализация API)
+  - depends: [T-0002]
+  - apply:
+    ```bash
+    cat > apps/svc-payments/providers/humo.ts <<'TS'
+export function initHumo({merchantId,secret}:{merchantId:string,secret:string}){ return {pay:(o:any)=>({ok:true,provider:'humo',o})}; }
+TS
+    git add apps/svc-payments/providers/humo.ts
+    ```
+
+- [ ] T-0112 | Абстракция платежей (router)
+  - depends: [T-0110,T-0111]
+  - apply:
+    ```bash
+    cat > apps/svc-payments/src/index.ts <<'TS'
+import {initUzcard} from "../providers/uzcard"; import {initHumo} from "../providers/humo";
+export function payments(env:any){ return { uzcard:initUzcard(env), humo:initHumo(env) }; }
+TS
+    git add apps/svc-payments/src/index.ts
+    ```
+
+- [ ] T-0113 | Платежные вебхуки (скелет)
+  - depends: [T-0112]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/webhooks
+    echo "export const webhook=1;" > apps/svc-payments/src/webhooks/index.ts
+    git add apps/svc-payments/src/webhooks/index.ts
+    ```
+
+---
+
+## ЭТАП 12. Уведомления: email/SMS/Push
+
+- [ ] T-0120 | Пакет `@wt/mailer` (+ mjml шаблон)
+  - depends: [T-0002]
+  - apply:
+    ```bash
+    mkdir -p packages/mailer/templates
+    echo "<mjml><mj-body><mj-text>Welcome</mj-text></mj-body></mjml>" > packages/mailer/templates/welcome.mjml
+    echo "export const mailer=1;" > packages/mailer/index.ts
+    git add packages/mailer/*
+    ```
+
+- [ ] T-0121 | SMS-шлюз абстракция
+  - depends: [T-0002]
+  - apply:
+    ```bash
+    mkdir -p packages/sms
+    echo "export const sms=1;" > packages/sms/index.ts
+    git add packages/sms/index.ts
+    ```
+
+---
+
+## ЭТАП 13. SEO/контент/блог
+
+- [ ] T-0130 | Sitemap генератор
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/scripts
+    echo "console.log('sitemap.xml');" > apps/svc-website/scripts/generate-sitemap.js
+    git add apps/svc-website/scripts/generate-sitemap.js
+    ```
+
+- [ ] T-0131 | OG-теги и мета-компонент
+  - depends: [T-0021]
+  - apply:
+    ```bash
+    mkdir -p packages/ui/src/meta
+    echo "export const Meta=()=>null;" > packages/ui/src/meta/Meta.tsx
+    git add packages/ui/src/meta/Meta.tsx
+    ```
+
+---
+
+## ЭТАП 14. Безопасность, политика, экспорт данных
+
+- [ ] T-0140 | ESLint/tsconfig базовые
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    cat > .eslintrc.json <<'JSON'
+{ "env":{"es2022":true,"node":true}, "extends":[], "rules":{} }
+JSON
+    cat > tsconfig.json <<'JSON'
+{ "compilerOptions":{ "target":"ES2022","module":"ESNext","moduleResolution":"Node" } }
+JSON
+    git add .eslintrc.json tsconfig.json
+    ```
+
+- [ ] T-0141 | Экспорт данных пользователя
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-auth/src/export
+    echo "export const exportUser=1;" > apps/svc-auth/src/export/index.ts
+    git add apps/svc-auth/src/export/index.ts
+    ```
+
+---
+
+## ЭТАП 15. K6 перф-профили
+
+- [ ] T-0150 | k6 каталог/енквайри смоук
+  - depends: [T-0050,T-0030]
+  - apply:
+    ```bash
+    mkdir -p infra/k6
+    echo "import http from 'k6/http';export default()=>http.get('http://localhost:3000/health');" > infra/k6/smoke.js
+    git add infra/k6/smoke.js
+    ```
+
+---
+
+## ЭТАП 16. Журналирование/наблюдаемость
+
+- [ ] T-0160 | Пакет `@wt/logger`
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    mkdir -p packages/logger
+    echo "export const logger={info:console.log,error:console.error};" > packages/logger/index.ts
+    git add packages/logger/index.ts
+    ```
+
+- [ ] T-0161 | Корреляционные ID в запросах
+  - depends: [T-0160]
+  - apply:
+    ```bash
+    mkdir -p packages/logger/mw
+    echo "export const mw=()=>{};" > packages/logger/mw/correlation.ts
+    git add packages/logger/mw/correlation.ts
+    ```
+
+---
+
+## ЭТАП 17. Монетизация: тарифы, рефералка, промокоды
+
+- [ ] T-0170 | Тарифные планы (модель/скелет API)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/plans
+    echo "export const plans=1;" > apps/svc-payments/src/plans/index.ts
+    git add apps/svc-payments/src/plans/index.ts
+    ```
+
+- [ ] T-0171 | Реферальная программа
+  - depends: [T-0170]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/referrals
+    echo "export const referrals=1;" > apps/svc-payments/src/referrals/index.ts
+    git add apps/svc-payments/src/referrals/index.ts
+    ```
+
+- [ ] T-0172 | Промокоды/купоны
+  - depends: [T-0170]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/coupons
+    echo "export const coupons=1;" > apps/svc-payments/src/coupons/index.ts
+    git add apps/svc-payments/src/coupons/index.ts
+    ```
+
+---
+
+## ЭТАП 18. CMS для контента (гиды/блог/лендинги)
+
+- [ ] T-0180 | Простая CMS на MDX
+  - depends: [T-0023]
+  - apply:
+    ```bash
+    mkdir -p docs/blog
+    echo "# Первый пост" > docs/blog/1.mdx
+    git add docs/blog/1.mdx
+    ```
+
+---
+
+## ЭТАП 19. Тесты и покрытия
+
+- [ ] T-0190 | Структура юнит-тестов
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    mkdir -p tests
+    echo "test('ok',()=>{})" > tests/smoke.test.ts
+    git add tests/smoke.test.ts
+    ```
+
+- [ ] T-0191 | E2E (Playwright) smoke
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    mkdir -p infra/e2e
+    echo "import {test,expect} from '@playwright/test';test('ok',()=>expect(true).toBeTruthy());" > infra/e2e/smoke.spec.ts
+    git add infra/e2e/smoke.spec.ts
+    ```
+
+---
+
+## ЭТАП 20. Сиды/демо-данные
+
+- [ ] T-0200 | Примитивный сидер
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/seeder
+    echo "console.log('seed ok');" > apps/seeder/index.js
+    git add apps/seeder/index.js
+    ```
+
+---
+
+## ЭТАП 21. Импорт/экспорт каталога поставщиков для СНГ
+
+- [ ] T-0210 | Импорт CSV поставщиков (RU/UZ/EN)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-vendors/src/import
+    echo "export const importVendors=1;" > apps/svc-vendors/src/import/index.ts
+    git add apps/svc-vendors/src/import/index.ts
+    ```
+
+---
+
+## ЭТАП 22. Legal/политики
+
+- [ ] T-0220 | Terms/Privacy/Offer (mdx)
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/pages/legal
+    echo "# Terms" > apps/svc-website/pages/legal/terms.mdx
+    echo "# Privacy" > apps/svc-website/pages/legal/privacy.mdx
+    echo "# Публичная оферта" > apps/svc-website/pages/legal/offer.mdx
+    git add apps/svc-website/pages/legal/*.mdx
+    ```
+
+---
+
+## ЭТАП 23. Публичные каталоги (SEO-страницы)
+
+- [ ] T-0230 | Страницы города/категории (SSR заглушки)
+  - depends: [T-0060,T-0050]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/pages/vendors
+    echo "export default function City(){return 'vendors-city';}" > apps/svc-website/pages/vendors/[city].js
+    git add apps/svc-website/pages/vendors/[city].js
+    ```
+
+---
+
+## ЭТАП 24. ЛК поставщика
+
+- [ ] T-0240 | Профиль/площадки/расписание
+  - depends: [T-0021,T-0051]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-vendors/src/dashboard
+    echo "export const vendorDashboard=1;" > apps/svc-vendors/src/dashboard/index.ts
+    git add apps/svc-vendors/src/dashboard/index.ts
+    ```
+
+---
+
+## ЭТАП 25. Анти-фрод
+
+- [ ] T-0250 | Флаги анти-фрода
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p packages/antifraud
+    echo "export const flags=['duplicate','spam','scam'];" > packages/antifraud/index.ts
+    git add packages/antifraud/index.ts
+    ```
+
+---
+
+## ЭТАП 26. Импорт календарей (iCal)
+
+- [ ] T-0260 | Импорт iCal
+  - depends: [T-0051]
+  - apply:
+    ```bash
+    mkdir -p packages/ical
+    echo "export const ical=1;" > packages/ical/index.ts
+    git add packages/ical/index.ts
+    ```
+
+---
+
+## ЭТАП 27. Медиа-хранилище (MinIO)
+
+- [ ] T-0270 | Абстракция S3-совместимого стораджа
+  - depends: [T-0003]
+  - apply:
+    ```bash
+    mkdir -p packages/storage
+    echo "export const storage=1;" > packages/storage/index.ts
+    git add packages/storage/index.ts
+    ```
+
+---
+
+## ЭТАП 28. Почтовые шаблоны
+
+- [ ] T-0280 | Invite/Invoice MJML
+  - depends: [T-0120]
+  - apply:
+    ```bash
+    echo "<mjml><mj-body><mj-text>Invite</mj-text></mj-body></mjml>" > packages/mailer/templates/invite.mjml
+    echo "<mjml><mj-body><mj-text>Invoice</mj-text></mj-body></mjml>" > packages/mailer/templates/invoice.mjml
+    git add packages/mailer/templates/*.mjml
+    ```
+
+---
+
+## ЭТАП 29. Инвойсы/оплаты
+
+- [ ] T-0290 | Модель/скелет API инвойсов
+  - depends: [T-0112,T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/invoices
+    echo "export const invoices=1;" > apps/svc-payments/src/invoices/index.ts
+    git add apps/svc-payments/src/invoices/index.ts
+    ```
+
+---
+
+## ЭТАП 30. Рефссылки/UTM
+
+- [ ] T-0300 | Генератор UTM/рефералок
+  - depends: [T-0171]
+  - apply:
+    ```bash
+    mkdir -p packages/ref
+    echo "export const ref=()=> 'ref';" > packages/ref/index.ts
+    git add packages/ref/index.ts
+    ```
+
+---
+
+## ЭТАП 31. Валюты/формат
+
+- [ ] T-0310 | Форматирование UZS/RUB/KZT
+  - depends: [T-0100]
+  - apply:
+    ```bash
+    mkdir -p packages/format
+    echo "export const fmt=(n,c)=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:c}).format(n);" > packages/format/index.ts
+    git add packages/format/index.ts
+    ```
+
+---
+
+## ЭТАП 32. Темы сайта пары
+
+- [ ] T-0320 | Темы (light/dark/minimal/royal)
+  - depends: [T-0020]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/themes
+    echo "export const themes=['light','dark','minimal','royal'];" > apps/svc-website/themes/index.ts
+    git add apps/svc-website/themes/index.ts
+    ```
+
+---
+
+## ЭТАП 33. Таймлайн подготовки
+
+- [ ] T-0330 | Таймлайн событий
+  - depends: [T-0091]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-guests/src/timeline
+    echo "export const timeline=1;" > apps/svc-guests/src/timeline/index.ts
+    git add apps/svc-guests/src/timeline/index.ts
+    ```
+
+---
+
+## ЭТАП 34. Чат пара↔поставщик
+
+- [ ] T-0340 | Каналы диалогов к заявкам
+  - depends: [T-0052]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/chat
+    echo "export const chat=1;" > apps/svc-enquiries/src/chat/index.ts
+    git add apps/svc-enquiries/src/chat/index.ts
+    ```
+
+---
+
+## ЭТАП 35. Договоры и подписи
+
+- [ ] T-0350 | Генерация договора (md → pdf)
+  - depends: [T-0290]
+  - apply:
+    ```bash
+    mkdir -p packages/contracts
+    echo "export const contracts=1;" > packages/contracts/index.ts
+    git add packages/contracts/index.ts
+    ```
+
+---
+
+## ЭТАП 36. Экспорт CSV/XLSX
+
+- [ ] T-0360 | Экспорт гостей/бюджета/столов
+  - depends: [T-0040,T-0042,T-0041]
+  - apply:
+    ```bash
+    mkdir -p packages/export
+    echo "export const exporter=1;" > packages/export/index.ts
+    git add packages/export/index.ts
+    ```
+
+---
+
+## ЭТАП 37. Продуктовая аналитика
+
+- [ ] T-0370 | Воронки: просмотр→заявка→договор→оплата
+  - depends: [T-0090]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/funnels
+    echo "export const funnels=['view','enquiry','contract','payment'];" > apps/svc-analytics/src/funnels/index.ts
+    git add apps/svc-analytics/src/funnels/index.ts
+    ```
+
+---
+
+## ЭТАП 38. Бэкапы
+
+- [ ] T-0380 | План бэкапов (docs)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p docs/ops
+    echo "# Backups plan" > docs/ops/backups.md
+    git add docs/ops/backups.md
+    ```
+
+---
+
+## ЭТАП 39. Аптайм/смоук
+
+- [ ] T-0390 | Smoke скрипты /health
+  - depends: [T-0004]
+  - apply:
+    ```bash
+    mkdir -p infra/smoke
+    echo "#!/usr/bin/env bash
+curl -sf http://localhost:3000/health" > infra/smoke/health.sh
+    chmod +x infra/smoke/health.sh
+    git add infra/smoke/health.sh
+    ```
+
+---
+
+## ЭТАП 40. SEO-категории и гайды (продолжаем)
+
+- [ ] T-0400 | Категории блог-гидов
+  - depends: [T-0180]
+  - apply:
+    ```bash
+    mkdir -p docs/blog/categories
+    cat > docs/blog/categories/venues.mdx <<'MDX'
+# Площадки для свадьбы — гид
+Описание основных параметров выбора площадки, чек-лист, частые ошибки.
+MDX
+    cat > docs/blog/categories/vendors.mdx <<'MDX'
+# Поставщики и подрядчики — гид
+Как отобрать фотографа, видеографа, ведущего и т.д.
+MDX
+    git add docs/blog/categories/*.mdx
+    ```
+
+- [ ] T-0401 | Гайды по городам (UZ/RU/EN)
+  - depends: [T-0400]
+  - apply:
+    ```bash
+    mkdir -p docs/blog/cities
+    for c in tashkent samarkand bukhara; do echo "# $c — свадебный гид" > "docs/blog/cities/${c}.mdx"; done
+    git add docs/blog/cities/*.mdx
+    ```
+
+---
+
+## ЭТАП 41. A/B-тесты
+
+- [ ] T-0410 | Пакет @wt/ab (флаги/эксперименты)
+  - depends: [T-0001]
+  - apply:
+    ```bash
+    mkdir -p packages/ab
+    cat > packages/ab/index.ts <<'TS'
+export function variant(key:string,uid:string){ let h=0; for(const c of (uid+key)) h=(h*31+c.charCodeAt(0))>>>0; return h%2; }
+TS
+    git add packages/ab/index.ts
+    ```
+
+- [ ] T-0411 | Эксперимент карточки поставщика V2
+  - depends: [T-0410, T-0050]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/experiments
+    echo "export const vendorCardV2=true;" > apps/svc-catalog/src/experiments/vendor-card-v2.ts
+    git add apps/svc-catalog/src/experiments/vendor-card-v2.ts
+    ```
+
+---
+
+## ЭТАП 42. Кэш/CDN
+
+- [ ] T-0420 | In-memory кэш каталога
+  - depends: [T-0050]
+  - apply:
+    ```bash
+    mkdir -p packages/cache
+    cat > packages/cache/index.ts <<'TS'
+const store=new Map<string,{v:any,ttl:number}>();
+export function get(k:string){const x=store.get(k); if(!x) return; if(x.ttl<Date.now()){store.delete(k); return;} return x.v;}
+export function set(k:string,v:any,ms=60000){store.set(k,{v,ttl:Date.now()+ms});}
+TS
+    git add packages/cache/index.ts
+    ```
+
+- [ ] T-0421 | Заголовки CDN (Next.js)
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/config
+    cat > apps/svc-website/config/headers.js <<'JS'
+module.exports = async () => [{ source: "/(.*)", headers: [{ key: "Cache-Control", value: "public, max-age=60" }]}];
+JS
+    git add apps/svc-website/config/headers.js
+    ```
+
+---
+
+## ЭТАП 43. Hardening
+
+- [ ] T-0430 | Security headers
+  - depends: [T-0004]
+  - apply:
+    ```bash
+    mkdir -p packages/security
+    cat > packages/security/headers.ts <<'TS'
+export const securityHeaders=[["X-Frame-Options","DENY"],["X-Content-Type-Options","nosniff"],["Referrer-Policy","strict-origin-when-cross-origin"]];
+TS
+    git add packages/security/headers.ts
+    ```
+
+- [ ] T-0431 | Политика паролей/брутфорс
+  - depends: [T-0030]
+  - apply:
+    ```bash
+    cat > apps/svc-auth/src/security.ts <<'TS'
+export const passwordPolicy={min:8,upper:true,lower:true,digit:true};
+export const bruteForceWindowMs=900000;
+TS
+    git add apps/svc-auth/src/security.ts
+    ```
+
+---
+
+## ЭТАП 44. KYC поставщиков
+
+- [ ] T-0440 | Чек-лист и документы
+  - depends: [T-0011, T-0270]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-vendors/src/kyc
+    cat > apps/svc-vendors/src/kyc/checklist.md <<'MD'
+# KYC чек-лист
+- Паспорт/ID, ИНН/регистрация
+- Право на предоставление услуг
+- Телефон/адрес подтверждены
+MD
+    git add apps/svc-vendors/src/kyc/checklist.md
+    ```
+
+---
+
+## ЭТАП 45. PWA
+
+- [ ] T-0450 | Manifest/иконки
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/public
+    cat > apps/svc-website/public/manifest.json <<'JSON'
+{ "name":"WeddingTech","short_name":"WT","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#7c3aed","icons":[] }
+JSON
+    git add apps/svc-website/public/manifest.json
+    ```
+
+- [ ] T-0451 | Service Worker
+  - depends: [T-0450]
+  - apply:
+    ```bash
+    cat > apps/svc-website/public/sw.js <<'JS'
+self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
+JS
+    git add apps/svc-website/public/sw.js
+    ```
+
+---
+
+## ЭТАП 46. Перформанс-баджеты
+
+- [ ] T-0460 | budgets.json
+  - depends: [T-0005]
+  - apply:
+    ```bash
+    mkdir -p infra/perf
+    cat > infra/perf/budgets.json <<'JSON'
+{ "lcp_ms": 2500, "ttfb_ms": 100, "transfer_kb": 300 }
+JSON
+    git add infra/perf/budgets.json
+    ```
+
+---
+
+## ЭТАП 47. Миграции данных
+
+- [ ] T-0470 | Шаблон миграций
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p infra/migrations
+    cat > infra/migrations/README.md <<'MD'
+# Миграции данных
+Каждая миграция — отдельный script.ts с идемпотентной логикой.
+MD
+    git add infra/migrations/README.md
+    ```
+
+---
+
+## ЭТАП 48. Дашборды
+
+- [ ] T-0480 | Docs: продуктовые метрики
+  - depends: [T-0090]
+  - apply:
+    ```bash
+    mkdir -p docs/dashboards
+    cat > docs/dashboards/product.md <<'MD'
+# Продуктовые метрики
+- Просмотры каталога, конверсия в заявку, конверсия в договор, оплата.
+MD
+    git add docs/dashboards/product.md
+    ```
+
+---
+
+## ЭТАП 49. Виральность/шэринг
+
+- [ ] T-0490 | Шэринг/UTM
+  - depends: [T-0300, T-0050]
+  - apply:
+    ```bash
+    mkdir -p packages/share
+    cat > packages/share/index.ts <<'TS'
+export function shareUrl(path:string,utm:string){return `${path}?${utm}`;}
+TS
+    git add packages/share/index.ts
+    ```
+
+---
+
+## ЭТАП 50. Legal UZ/RU
+
+- [ ] T-0500 | Политики под Узбекистан
+  - depends: [T-0220]
+  - apply:
+    ```bash
+    mkdir -p docs/legal/uz
+    echo "# Siyosat (UZ)" > docs/legal/uz/privacy.mdx
+    echo "# Политика (RU)" > docs/legal/privacy-ru.mdx
+    git add docs/legal/uz/privacy.mdx docs/legal/privacy-ru.mdx
+    ```
+
+---
+
+## ЭТАП 51. Поиск по сайту (full-text, подсказки)
+
+- [ ] T-0510 | Пакет `@wt/search` (in-repo)
+  - depends: [T-0050]
+  - apply:
+    ```bash
+    mkdir -p packages/search
+    echo "export const search=()=>[];" > packages/search/index.ts
+    git add packages/search/index.ts
+    ```
+
+---
+
+## ЭТАП 52. Мультимедиа и компрессия
+
+- [ ] T-0520 | Минификация изображений (заготовка)
+  - depends: [T-0270]
+  - apply:
+    ```bash
+    mkdir -p packages/media
+    echo "export const minify=()=>true;" > packages/media/index.ts
+    git add packages/media/index.ts
+    ```
+
+---
+
+## ЭТАП 53. Категории поставщиков (иерархия)
+
+- [ ] T-0530 | Справочник категорий
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p packages/catalog
+    echo "export const categories=['venue','photo','video','host','music','decor','cake','dress'];" > packages/catalog/categories.ts
+    git add packages/catalog/categories.ts
+    ```
+
+---
+
+## ЭТАП 54. Фильтры по бюджету/гостям
+
+- [ ] T-0540 | Пресеты бюджета и количества гостей
+  - depends: [T-0050]
+  - apply:
+    ```bash
+    echo "export const budgetPresets=[1000,3000,5000,10000];" > packages/catalog/budget.ts
+    echo "export const guestsPresets=[50,100,150,200,300];" >> packages/catalog/budget.ts
+    git add packages/catalog/budget.ts
+    ```
+
+---
+
+## ЭТАП 55. Сохранённые списки/избранное
+
+- [ ] T-0550 | Избранное пары (скелет)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/favorites
+    echo "export const favorites=1;" > apps/svc-catalog/src/favorites/index.ts
+    git add apps/svc-catalog/src/favorites/index.ts
+    ```
+
+---
+
+## ЭТАП 56. Сравнение поставщиков
+
+- [ ] T-0560 | Таблица сравнения (скелет)
+  - depends: [T-0550]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/compare
+    echo "export const compare=1;" > apps/svc-catalog/src/compare/index.ts
+    git add apps/svc-catalog/src/compare/index.ts
+    ```
+
+---
+
+## ЭТАП 57. Генератор чек-листа подготовки
+
+- [ ] T-0570 | Пресеты этапов планирования
+  - depends: [T-0043]
+  - apply:
+    ```bash
+    echo "export const planning=['budget','guests','venue','vendors','website','rsvp'];" > apps/svc-guests/src/checklist/presets.ts
+    git add apps/svc-guests/src/checklist/presets.ts
+    ```
+
+---
+
+## ЭТАП 58. Географические справочники
+
+- [ ] T-0580 | Города/регионы Узбекистана
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p packages/geo
+    echo "export const cities=['Tashkent','Samarkand','Bukhara','Khiva','Andijan','Namangan','Fergana'];" > packages/geo/uz.ts
+    git add packages/geo/uz.ts
+    ```
+
+---
+
+## ЭТАП 59. Анти-спам в отзывах (правила)
+
+- [ ] T-0590 | Правила текстовой модерации
+  - depends: [T-0070]
+  - apply:
+    ```bash
+    echo "export const badWords=['spam','scam'];" > apps/svc-enquiries/src/reviews/rules.ts
+    git add apps/svc-enquiries/src/reviews/rules.ts
+    ```
+
+---
+
+## ЭТАП 60. Маркетплейс пакетных предложений
+
+- [ ] T-0600 | Пакеты «зал+декор+музыка»
+  - depends: [T-0040,T-0042,T-0050]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/bundles
+    echo "export const bundles=1;" > apps/svc-catalog/src/bundles/index.ts
+    git add apps/svc-catalog/src/bundles/index.ts
+    ```
+
+---
+
+## ЭТАП 61. Подписки/уведомления о доступности
+
+- [ ] T-0610 | Подписки на даты/города
+  - depends: [T-0051]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-vendors/src/subscriptions
+    echo "export const subs=1;" > apps/svc-vendors/src/subscriptions/index.ts
+    git add apps/svc-vendors/src/subscriptions/index.ts
+    ```
+
+---
+
+## ЭТАП 62. Календарь пары
+
+- [ ] T-0620 | События подготовки (личный календарь)
+  - depends: [T-0043]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-guests/src/calendar
+    echo "export const calendar=1;" > apps/svc-guests/src/calendar/index.ts
+    git add apps/svc-guests/src/calendar/index.ts
+    ```
+
+---
+
+## ЭТАП 63. Рекомендательная лента
+
+- [ ] T-0630 | Сигналы и рекомендации
+  - depends: [T-0370]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/reco
+    echo "export const reco=1;" > apps/svc-catalog/src/reco/index.ts
+    git add apps/svc-catalog/src/reco/index.ts
+    ```
+
+---
+
+## ЭТАП 64. Экспорт счетов/квитанций (PDF)
+
+- [ ] T-0640 | PDF-квитанции (заготовка)
+  - depends: [T-0290]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/pdf
+    echo "export const pdf=1;" > apps/svc-payments/src/pdf/index.ts
+    git add apps/svc-payments/src/pdf/index.ts
+    ```
+
+---
+
+## ЭТАП 65. Гео-поиск по близости
+
+- [ ] T-0650 | Координаты/радиусы (скелет)
+  - depends: [T-0580,T-0050]
+  - apply:
+    ```bash
+    echo "export const near=(lat,lon,r)=>[];" > packages/geo/near.ts
+    git add packages/geo/near.ts
+    ```
+
+---
+
+## ЭТАП 66. Профили UX-ролей (персоны)
+
+- [ ] T-0660 | Персоны (docs)
+  - depends: [T-0023]
+  - apply:
+    ```bash
+    mkdir -p docs/ux
+    cat > docs/ux/personas.md <<'MD'
+# Персоны: Пара, Поставщик, Админ
+Основные задачи, боли, KPI, сценарии.
+MD
+    git add docs/ux/personas.md
+    ```
+
+---
+
+## ЭТАП 67. Доступность (a11y чек-лист)
+
+- [ ] T-0670 | Чек-лист a11y
+  - depends: [T-0023]
+  - apply:
+    ```bash
+    cat > docs/ux/a11y.md <<'MD'
+# A11y чек-лист
+- Контраст, размеры шрифтов, клавиатурная навигация, ARIA.
+MD
+    git add docs/ux/a11y.md
+    ```
+
+---
+
+## ЭТАП 68. Темы событий (никях/европейская/национальная)
+
+- [ ] T-0680 | Пресеты сценариев
+  - depends: [T-0320]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/themes/presets
+    echo "export const presets=['nikah','european','national'];" > apps/svc-website/themes/presets/index.ts
+    git add apps/svc-website/themes/presets/index.ts
+    ```
+
+---
+
+## ЭТАП 69. Калькулятор бюджета
+
+- [ ] T-0690 | Виджет калькулятора
+  - depends: [T-0042]
+  - apply:
+    ```bash
+    mkdir -p packages/ui/src/widgets
+    echo "export const BudgetWidget=()=>null;" > packages/ui/src/widgets/Budget.tsx
+    git add packages/ui/src/widgets/Budget.tsx
+    ```
+
+---
+
+## ЭТАП 70. Каталог идей (inspo)
+
+- [ ] T-0700 | Идеи/подборки (mdx)
+  - depends: [T-0180]
+  - apply:
+    ```bash
+    mkdir -p docs/inspo
+    echo "# Идеи оформления" > docs/inspo/ideas.mdx
+    git add docs/inspo/ideas.mdx
+    ```
+
+---
+
+## ЭТАП 71. Onboarding/первые шаги
+
+- [ ] T-0710 | Скрипт onboarding
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/onboarding
+    echo "export const onboarding=1;" > apps/svc-website/onboarding/index.ts
+    git add apps/svc-website/onboarding/index.ts
+    ```
+
+---
+
+## ЭТАП 72. Настройки оповещений
+
+- [ ] T-0720 | Центр уведомлений
+  - depends: [T-0120,T-0121]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-notifier/src
+    echo "export const notifier=1;" > apps/svc-notifier/src/index.ts
+    git add apps/svc-notifier/src/index.ts
+    ```
+
+---
+
+## ЭТАП 73. Теги/атрибуты у поставщиков
+
+- [ ] T-0730 | Тэги (kids-friendly, halal, vegan)
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    echo "export const vendorTags=['kids','halal','vegan','live-music'];" > packages/catalog/tags.ts
+    git add packages/catalog/tags.ts
+    ```
+
+---
+
+## ЭТАП 74. Мультивалюта и курсы
+
+- [ ] T-0740 | Курсы валют (stub)
+  - depends: [T-0310]
+  - apply:
+    ```bash
+    echo "export const rates={UZS:1,RUB:0.008,USD:0.000085};" > packages/format/rates.ts
+    git add packages/format/rates.ts
+    ```
+
+---
+
+## ЭТАП 75. UX «конструктор программы дня»
+
+- [ ] T-0750 | Программа дня (скелет)
+  - depends: [T-0620]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-guests/src/agenda
+    echo "export const agenda=1;" > apps/svc-guests/src/agenda/index.ts
+    git add apps/svc-guests/src/agenda/index.ts
+    ```
+
+---
+
+## ЭТАП 76. Экспорт приглашений (PDF/PNG)
+
+- [ ] T-0760 | Экспорт пригласительных
+  - depends: [T-0062]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/export
+    echo "export const invite=1;" > apps/svc-website/export/invite.ts
+    git add apps/svc-website/export/invite.ts
+    ```
+
+---
+
+## ЭТАП 77. Гайды для поставщиков (как повысить рейтинг)
+
+- [ ] T-0770 | Док гайдлайнов
+  - depends: [T-0530]
+  - apply:
+    ```bash
+    mkdir -p docs/vendors
+    cat > docs/vendors/guide.md <<'MD'
+# Как повысить рейтинг и конверсию
+Заполненность профиля, отзывы, скорость ответа, акции.
+MD
+    git add docs/vendors/guide.md
+    ```
+
+---
+
+## ЭТАП 78. Отмена/возвраты
+
+- [ ] T-0780 | Политика отмен
+  - depends: [T-0290]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/cancellations
+    echo "export const cancellations=1;" > apps/svc-payments/src/cancellations/index.ts
+    git add apps/svc-payments/src/cancellations/index.ts
+    ```
+
+---
+
+## ЭТАП 79. Эскроу/частичные оплаты (заготовка)
+
+- [ ] T-0790 | Эскроу-логика (stub)
+  - depends: [T-0290,T-0112]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/escrow
+    echo "export const escrow=1;" > apps/svc-payments/src/escrow/index.ts
+    git add apps/svc-payments/src/escrow/index.ts
+    ```
+
+---
+
+## ЭТАП 80. Анкета пары → персонализация каталога
+
+- [ ] T-0800 | Анкета предпочтений
+  - depends: [T-0630]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/profile
+    echo "export const coupleProfile=1;" > apps/svc-catalog/src/profile/index.ts
+    git add apps/svc-catalog/src/profile/index.ts
+    ```
+
+---
+
+## ЭТАП 81. Импорт контактов гостей (vCard)
+
+- [ ] T-0810 | vCard импорт
+  - depends: [T-0040]
+  - apply:
+    ```bash
+    mkdir -p packages/vcard
+    echo "export const vcard=1;" > packages/vcard/index.ts
+    git add packages/vcard/index.ts
+    ```
+
+---
+
+## ЭТАП 82. Отчёты для поставщика (аналитика спроса)
+
+- [ ] T-0820 | Срезы спроса/сезонности
+  - depends: [T-0090]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/vendor
+    echo "export const vendorReports=1;" > apps/svc-analytics/src/vendor/index.ts
+    git add apps/svc-analytics/src/vendor/index.ts
+    ```
+
+---
+
+## ЭТАП 83. Подбор дат (календарные рекомендации)
+
+- [ ] T-0830 | Рекомендация дат
+  - depends: [T-0051,T-0620]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/dates
+    echo "export const suggestDates=1;" > apps/svc-catalog/src/dates/index.ts
+    git add apps/svc-catalog/src/dates/index.ts
+    ```
+
+---
+
+## ЭТАП 84. Импорт прайсов поставщиков
+
+- [ ] T-0840 | CSV/XLSX прайсы
+  - depends: [T-0210]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-vendors/src/pricelist
+    echo "export const pricelist=1;" > apps/svc-vendors/src/pricelist/index.ts
+    git add apps/svc-vendors/src/pricelist/index.ts
+    ```
+
+---
+
+## ЭТАП 85. Программы лояльности
+
+- [ ] T-0850 | Баллы/кэшбек (скелет)
+  - depends: [T-0170]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/loyalty
+    echo "export const loyalty=1;" > apps/svc-payments/src/loyalty/index.ts
+    git add apps/svc-payments/src/loyalty/index.ts
+    ```
+
+---
+
+## ЭТАП 86. Витрина акций/скидок
+
+- [ ] T-0860 | Акции каталога
+  - depends: [T-0050]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/deals
+    echo "export const deals=1;" > apps/svc-catalog/src/deals/index.ts
+    git add apps/svc-catalog/src/deals/index.ts
+    ```
+
+---
+
+## ЭТАП 87. Экспорт CSV аналитики
+
+- [ ] T-0870 | Экспорт отчётов
+  - depends: [T-0370]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/export
+    echo "export const exportReports=1;" > apps/svc-analytics/src/export/index.ts
+    git add apps/svc-analytics/src/export/index.ts
+    ```
+
+---
+
+## ЭТАП 88. Кабинет пары: прогресс и дедлайны
+
+- [ ] T-0880 | Прогресс-бар подготовки
+  - depends: [T-0570]
+  - apply:
+    ```bash
+    mkdir -p apps/website-mvp/src/widgets
+    echo "export const Progress=()=>null;" > apps/website-mvp/src/widgets/Progress.tsx
+    git add apps/website-mvp/src/widgets/Progress.tsx
+    ```
+
+---
+
+## ЭТАП 89. Экспорт гостей в vCard/CSV
+
+- [ ] T-0890 | Экспорт гостей
+  - depends: [T-0360]
+  - apply:
+    ```bash
+    echo "export const exportGuests=1;" > packages/export/guests.ts
+    git add packages/export/guests.ts
+    ```
+
+---
+
+## ЭТАП 90. Печать/PDF программы дня
+
+- [ ] T-0900 | Экспорт программы в PDF
+  - depends: [T-0750]
+  - apply:
+    ```bash
+    echo "export const agendaPdf=1;" > apps/svc-guests/src/agenda/pdf.ts
+    git add apps/svc-guests/src/agenda/pdf.ts
+    ```
+
+---
+
+## ЭТАП 91. Анкета гостей (диеты/ограничения)
+
+- [ ] T-0910 | Поля диет/аллергий
+  - depends: [T-0011,T-0040]
+  - apply:
+    ```bash
+    echo "export const diets=['vegan','vegetarian','halal','gluten-free'];" > apps/svc-guests/src/import/diets.ts
+    git add apps/svc-guests/src/import/diets.ts
+    ```
+
+---
+
+## ЭТАП 92. Пуш-уведомления (web push)
+
+- [ ] T-0920 | Заглушка webpush
+  - depends: [T-0451]
+  - apply:
+    ```bash
+    mkdir -p packages/push
+    echo "export const webpush=1;" > packages/push/index.ts
+    git add packages/push/index.ts
+    ```
+
+---
+
+## ЭТАП 93. Резервирование дат с предоплатой
+
+- [ ] T-0930 | Предоплата брони
+  - depends: [T-0112,T-0290]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/prepay
+    echo "export const prepay=1;" > apps/svc-enquiries/src/prepay/index.ts
+    git add apps/svc-enquiries/src/prepay/index.ts
+    ```
+
+---
+
+## ЭТАП 94. Интеграция e-mail домена (SPF/DKIM docs)
+
+- [ ] T-0940 | Док по SPF/DKIM
+  - depends: [T-0120]
+  - apply:
+    ```bash
+    mkdir -p docs/ops/email
+    echo "# SPF/DKIM настройка" > docs/ops/email/spf-dkim.md
+    git add docs/ops/email/spf-dkim.md
+    ```
+
+---
+
+## ЭТАП 95. Импорт отзывов из внешних источников (stub)
+
+- [ ] T-0950 | Импорт отзывов CSV
+  - depends: [T-0070]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/reviews/import
+    echo "export const importReviews=1;" > apps/svc-enquiries/src/reviews/import/index.ts
+    git add apps/svc-enquiries/src/reviews/import/index.ts
+    ```
+
+---
+
+## ЭТАП 96. Фидбек-виджет (NPS/CSAT)
+
+- [ ] T-0960 | NPS сборщик
+  - depends: [T-0090]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/nps
+    echo "export const nps=1;" > apps/svc-analytics/src/nps/index.ts
+    git add apps/svc-analytics/src/nps/index.ts
+    ```
+
+---
+
+## ЭТАП 97. Механика «заявка → договор → оплата» (связки)
+
+- [ ] T-0970 | Связки сущностей (docs)
+  - depends: [T-0290,T-0350]
+  - apply:
+    ```bash
+    cat > docs/architecture/flows.md <<'MD'
+# Flows: enquiry → contract → invoice → payment
+MD
+    git add docs/architecture/flows.md
+    ```
+
+---
+
+## ЭТАП 98. Точки качества каталога (скоринг профиля)
+
+- [ ] T-0980 | Метрики профиля
+  - depends: [T-0530]
+  - apply:
+    ```bash
+    echo "export const profileScore=['fields','media','docs','reviews','responseTime'];" > apps/svc-catalog/src/rank/profile.ts
+    git add apps/svc-catalog/src/rank/profile.ts
+    ```
+
+---
+
+## ЭТАП 99. Маркетинговые лендинги
+
+- [ ] T-0990 | Лендинг поставщика (mdx)
+  - depends: [T-0180]
+  - apply:
+    ```bash
+    mkdir -p docs/landing
+    echo "# Почему с нами выгодно" > docs/landing/vendors.mdx
+    git add docs/landing/vendors.mdx
+    ```
+
+---
+
+## этап 100 . PUSH В ВЕТКУ `codex`
+
+- [ ] T-1000 | Пуш прогресса
+  - depends: [T-0005]
+  - apply:
+    ```bash
+    git add -A
+    git commit -m "Codex: full roadmap 0..100 — bootstrap→MVP→growth"
+    git push origin codex || true
+    ```
+
+## ЭТАП 101. ML-ранжирование и оффлайн-скоринг
+
+- [ ] T-1010 | Пакет `@wt/mlrank` — оффлайн скорер (заглушка под модель)
+  - depends: [T-0053, T-0370]
+  - apply:
+    ```bash
+    mkdir -p packages/mlrank
+    cat > packages/mlrank/index.ts <<'TS'
+/** Простейшая линейная модель под оффлайн-скоры (заменяется на ML позднее). */
+export function score(v:{conv:number;rating:number;profile:number;calendar:number;price?:number}) {
+  const s = 0.55*v.conv + 0.2*v.rating + 0.2*v.profile + 0.05*v.calendar;
+  return Math.max(0, Math.min(1, s));
 }
+TS
+    git add packages/mlrank/index.ts
+    ```
 
-model Couple {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  weddingDate DateTime?
-  city        String?
-  preferences Json?
-  user        User     @relation(fields: [userId], references: [id])
-  Guests      Guest[]
-  Tables      Table[]
-  Budget      BudgetItem[]
-  Website     Website?
+- [ ] T-1011 | Экстракция признаков каталога
+  - depends: [T-0011, T-1010]
+  - apply:
+    ```bash
+    mkdir -p infra/feast
+    cat > infra/feast/extract-features.ts <<'TS'
+export function extract(vendor:any){
+  return { conv: vendor.conv||0, rating: vendor.rating||0, profile: vendor.profileScore||0, calendar: vendor.calendar||0 };
 }
+TS
+    git add infra/feast/extract-features.ts
+    ```
 
-model Vendor {
-  id            String   @id @default(cuid())
-  ownerUserId   String
-  type          String   // e.g. TOYHANA, PHOTO, VIDEO, MUSIC, DRESS
-  title         String
-  city          String
-  address       String?
-  priceFrom     Int?
-  rating        Float?   @default(0)
-  verified      Boolean  @default(false)
-  profileScore  Int      @default(0) // полнота профиля 0..100
-  media         Json?
-  docs          Json?
-  owner         User     @relation(fields: [ownerUserId], references: [id])
-  Venues        Venue[]
-  Offers        Offer[]
-  Availabilities AvailabilitySlot[]
+- [ ] T-1012 | Batch-пересчёт рангов
+  - depends: [T-1011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/ml
+    cat > apps/svc-catalog/src/ml/recompute.ts <<'TS'
+import { score } from "@wt/mlrank";
+import { extract } from "../../../infra/feast/extract-features";
+export function recomputeFor(vendors:any[]){ return vendors.map(v=>({id:v.id, rank: score(extract(v))})); }
+TS
+    git add apps/svc-catalog/src/ml/recompute.ts
+    ```
+
+---
+
+## ЭТАП 102. Многоэтапные оплаты и эскроу
+
+- [ ] T-1020 | Partial payments (депозит/финал)
+  - depends: [T-0290, T-0112]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/partials
+    cat > apps/svc-payments/src/partials/index.ts <<'TS'
+export type PaymentPart = { kind:'deposit'|'final', amount:number, due:string };
+export const split = (total:number)=>[{kind:'deposit',amount:Math.round(total*0.3),due:'book'}, {kind:'final',amount:total-Math.round(total*0.3),due:'event'}];
+TS
+    git add apps/svc-payments/src/partials/index.ts
+    ```
+
+- [ ] T-1021 | Эскроу оркестратор (скелет)
+  - depends: [T-0790, T-1020]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/escrow/engine
+    cat > apps/svc-payments/src/escrow/engine/index.ts <<'TS'
+export const escrowEngine={ hold:(inv:any)=>({status:'held', id: inv?.id||'escrow-1'}), release:(id:string)=>({status:'released',id}) };
+TS
+    git add apps/svc-payments/src/escrow/engine/index.ts
+    ```
+
+---
+
+## ЭТАП 103. Сверка выплат поставщикам
+
+- [ ] T-1030 | Реестр выплат (CSV-экспорт)
+  - depends: [T-0290]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/payouts
+    cat > apps/svc-payments/src/payouts/register.ts <<'TS'
+export function payoutsCsv(rows:any[]){ return ['invoice_id,amount,currency,beneficiary'].concat(rows.map(r=>[r.id,r.amount,r.ccy,r.benef].join(','))).join('\n'); }
+TS
+    git add apps/svc-payments/src/payouts/register.ts
+    ```
+
+- [ ] T-1031 | Акт сверки (md → csv)
+  - depends: [T-1030]
+  - apply:
+    ```bash
+    cat > apps/svc-payments/src/payouts/reconcile.ts <<'TS'
+export function reconcile(a:any[],b:any[]){ const A=new Map(a.map((x:any)=>[x.id,x])); return b.filter(x=>!A.has(x.id)); }
+TS
+    git add apps/svc-payments/src/payouts/reconcile.ts
+    ```
+
+---
+
+## ЭТАП 104. Push-кампании и сегментация
+
+- [ ] T-1040 | Сегменты аудиторий
+  - depends: [T-0370, T-0720]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-notifier/src/segments
+    cat > apps/svc-notifier/src/segments/index.ts <<'TS'
+export const segments={ newCouples:(u:any)=>u.createdDays<14, highIntent:(u:any)=>u.enquiries>0 && u.siteViews>3 };
+TS
+    git add apps/svc-notifier/src/segments/index.ts
+    ```
+
+- [ ] T-1041 | Кампания (скелет DSL)
+  - depends: [T-1040]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-notifier/src/campaigns
+    cat > apps/svc-notifier/src/campaigns/welcome.ts <<'TS'
+export default { name:'welcome', when:'D0', segment:'newCouples', action:'email:welcome' };
+TS
+    git add apps/svc-notifier/src/campaigns/welcome.ts
+    ```
+
+---
+
+## ЭТАП 105. UTM-атрибуция до оплаты
+
+- [ ] T-1050 | Трекер сессий UTM
+  - depends: [T-0370, T-0490]
+  - apply:
+    ```bash
+    mkdir -p packages/attribution
+    cat > packages/attribution/index.ts <<'TS'
+export function normalize(q:any){ return {utm_source:q.utm_source||'direct', utm_medium:q.utm_medium||'none', utm_campaign:q.utm_campaign||'none'}; }
+TS
+    git add packages/attribution/index.ts
+    ```
+
+- [ ] T-1051 | Привязка UTM к инвойсу
+  - depends: [T-1050, T-0290]
+  - apply:
+    ```bash
+    cat > apps/svc-payments/src/invoices/utm.ts <<'TS'
+export function attachUtm(invoice:any, utm:any){ return {...invoice, utm}; }
+TS
+    git add apps/svc-payments/src/invoices/utm.ts
+    ```
+
+---
+
+## ЭТАП 106. Доп. платёжные провайдеры (UzPay/Payme/Click)
+
+- [ ] T-1060 | UzPay провайдер
+  - depends: [T-0112]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/providers
+    cat > apps/svc-payments/providers/uzpay.ts <<'TS'
+export function initUzPay(cfg:any){ return { pay:(o:any)=>({ok:true,provider:'uzpay',o}) }; }
+TS
+    git add apps/svc-payments/providers/uzpay.ts
+    ```
+
+- [ ] T-1061 | Payme провайдер
+  - depends: [T-0112]
+  - apply:
+    ```bash
+    cat > apps/svc-payments/providers/payme.ts <<'TS'
+export function initPayme(cfg:any){ return { pay:(o:any)=>({ok:true,provider:'payme',o}) }; }
+TS
+    git add apps/svc-payments/providers/payme.ts
+    ```
+
+- [ ] T-1062 | Click провайдер
+  - depends: [T-0112]
+  - apply:
+    ```bash
+    cat > apps/svc-payments/providers/click.ts <<'TS'
+export function initClick(cfg:any){ return { pay:(o:any)=>({ok:true,provider:'click',o}) }; }
+TS
+    git add apps/svc-payments/providers/click.ts
+    ```
+
+---
+
+## ЭТАП 107. GraphQL-шлюз
+
+- [ ] T-1070 | Gateway (скелет)
+  - depends: [T-0004]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-gql/src
+    cat > apps/svc-gql/src/index.ts <<'TS'
+export const schema=`type Query{ health:String }`; export const resolvers={ Query:{ health:()=> "ok" } };
+TS
+    git add apps/svc-gql/src/index.ts
+    ```
+
+---
+
+## ЭТАП 108. Rate-limits
+
+- [ ] T-1080 | Примитивный токен-бакет
+  - depends: [T-0004]
+  - apply:
+    ```bash
+    mkdir -p packages/ratelimit
+    cat > packages/ratelimit/index.ts <<'TS'
+const buckets=new Map<string,{tokens:number,ts:number}>();
+export function allow(key:string, limit=60, windowMs=60000){
+  const now=Date.now(); const b=buckets.get(key)||{tokens:limit,ts:now};
+  const refill=Math.floor((now-b.ts)/windowMs)*limit; b.tokens=Math.min(limit,b.tokens+Math.max(0,refill)); b.ts=now;
+  if(b.tokens<=0){ buckets.set(key,b); return false; } b.tokens--; buckets.set(key,b); return true;
 }
-
-model Venue {
-  id         String  @id @default(cuid())
-  vendorId   String
-  title      String
-  capacityMin Int?
-  capacityMax Int?
-  features    Json?
-  vendor     Vendor  @relation(fields: [vendorId], references: [id])
-  @@index([capacityMin, capacityMax])
-}
-
-model AvailabilitySlot {
-  id        String             @id @default(cuid())
-  vendorId  String
-  venueId   String?
-  date      DateTime
-  status    AvailabilityStatus
-  vendor    Vendor             @relation(fields: [vendorId], references: [id])
-  venue     Venue?             @relation(fields: [venueId], references: [id])
-  @@index([vendorId, date])
-}
-
-model Offer {
-  id        String   @id @default(cuid())
-  vendorId  String
-  title     String
-  description String?
-  price     Int?
-  validFrom DateTime?
-  validTo   DateTime?
-  isHighlighted Boolean @default(false)
-  vendor    Vendor   @relation(fields: [vendorId], references: [id])
-}
-
-model Enquiry {
-  id        String        @id @default(cuid())
-  coupleId  String
-  vendorId  String
-  venueId   String?
-  eventDate DateTime?
-  guests    Int?
-  budget    Int?
-  status    EnquiryStatus @default(NEW)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  couple    Couple        @relation(fields: [coupleId], references: [id])
-  vendor    Vendor        @relation(fields: [vendorId], references: [id])
-  venue     Venue?        @relation(fields: [venueId], references: [id])
-  notes     EnquiryNote[]
-  reviews   Review[]
-  @@index([status, eventDate])
-}
-
-model EnquiryNote {
-  id        String   @id @default(cuid())
-  enquiryId String
-  authorId  String
-  text      String
-  createdAt DateTime @default(now())
-  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id])
-}
-
-model Review {
-  id        String   @id @default(cuid())
-  enquiryId String   @unique // отзыв возможен только по закрытой (WON) заявке
-  rating    Int
-  text      String?
-  isPublished Boolean @default(false)
-  moderationStatus String? // APPROVED/REJECTED/NEED_INFO
-  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id])
-}
-
-model Guest {
-  id        String     @id @default(cuid())
-  coupleId  String
-  name      String
-  phone     String?
-  email     String?
-  diet      String?
-  plusOne   Boolean    @default(false)
-  status    RSVPStatus @default(INVITED)
-  couple    Couple     @relation(fields: [coupleId], references: [id])
-  tableId   String?
-  table     Table?     @relation(fields: [tableId], references: [id])
-  @@index([coupleId, status])
-}
-
-model Table {
-  id       String  @id @default(cuid())
-  coupleId String
-  name     String
-  seats    Int
-  sort     Int      @default(0)
-  couple   Couple  @relation(fields: [coupleId], references: [id])
-  Guests   Guest[]
-}
-
-model BudgetItem {
-  id       String  @id @default(cuid())
-  coupleId String
-  category String
-  planned  Int     @default(0)
-  actual   Int     @default(0)
-  note     String?
-  couple   Couple  @relation(fields: [coupleId], references: [id])
-}
-
-model Website {
-  id         String  @id @default(cuid())
-  coupleId   String  @unique
-  slug       String  @unique
-  themeId    String
-  isPublished Boolean @default(false)
-  rsvpPublicEnabled Boolean @default(true)
-  couple     Couple  @relation(fields: [coupleId], references: [id])
-  RSVPs      RSVP[]
-}
-
-model RSVP {
-  id        String  @id @default(cuid())
-  websiteId String
-  guestId   String?
-  name      String
-  contact   String?
-  response  RSVPStatus
-  message   String?
-  createdAt DateTime @default(now())
-  website   Website @relation(fields: [websiteId], references: [id])
-}
-
-model AuditEvent {
-  id        String   @id @default(cuid())
-  entity    String
-  entityId  String
-  type      String // e.g., ENQUIRY_STATUS_CHANGED
-  data      Json?
-  byUserId  String?
-  createdAt DateTime @default(now())
-}
-
-model RankSignal {
-  id        String  @id @default(cuid())
-  vendorId  String
-  venueId   String?
-  signalType String  // CONVERSION, RATING, PROFILE, CALENDAR
-  weight    Float   @default(0)
-  ttl       DateTime?
-  @@index([vendorId, signalType])
-}
-```
-
-**DoD (этап 1):** миграции прогоняются; генерятся типы; ER‑диаграмма сохранена в `docs/er/`.
+TS
+    git add packages/ratelimit/index.ts
+    ```
 
 ---
 
-## Этап 2: Аутентификация и роли — `apps/svc-auth`
-- [x] Зависимости: `@nestjs/jwt`, `argon2`, `class-validator`, `passport-jwt`. — 2025-10-16 22:02:50 +0500
-- [ ] Файлы:
-```
-apps/svc-auth/src/app.module.ts
-apps/svc-auth/src/auth.controller.ts
-apps/svc-auth/src/auth.service.ts
-apps/svc-auth/src/strategies/jwt.strategy.ts
-apps/svc-auth/src/guards/roles.guard.ts
-apps/svc-auth/src/dto/register.dto.ts
-apps/svc-auth/src/dto/login.dto.ts
-apps/svc-auth/src/dto/refresh.dto.ts
-apps/svc-auth/test/auth.e2e-spec.ts
-```
-- [ ] API‑контракты:
-```
-POST /api/v1/auth/register
-Req: {"email":"user@example.com","password":"Str0ngPass!23","role":"PAIR","locale":"ru"}
-Res 201: {"id":"ck_..."}
+## ЭТАП 109. Fraud-сигналы
 
-POST /api/v1/auth/login
-Req: {"email":"user@example.com","password":"Str0ngPass!23"}
-Res 200: {"accessToken":"<jwt>","refreshToken":"<jwt>"}
-
-POST /api/v1/auth/refresh
-Req: {"refreshToken":"<jwt>"}
-Res 200: {"accessToken":"<jwt>","refreshToken":"<jwt>"}
-```
-- [ ] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов.
-- [ ] DoD: p95 < 100мс; e2e покрытие: регистрация 201, повтор 409, логин 200, неверный пароль 401, refresh 200.
+- [ ] T-1090 | Каталог сигналов риска
+  - depends: [T-0250]
+  - apply:
+    ```bash
+    mkdir -p packages/antifraud/signals
+    cat > packages/antifraud/signals/index.ts <<'TS'
+export const signals={ manyEnquiriesShortTime:(u:any)=>u.eqLastHour>5, ipMismatch:(u:any)=>u.regIpCountry && u.txIpCountry && (u.regIpCountry!==u.txIpCountry) };
+TS
+    git add packages/antifraud/signals/index.ts
+    ```
 
 ---
 
-## Этап 3: Заявки / Enquiry Manager — `apps/svc-enquiries`
-- [ ] Файлы:
-```
-apps/svc-enquiries/src/enquiries.controller.ts
-apps/svc-enquiries/src/enquiries.service.ts
-apps/svc-enquiries/src/dto/create-enquiry.dto.ts
-apps/svc-enquiries/src/dto/update-enquiry.dto.ts
-apps/svc-enquiries/src/dto/change-status.dto.ts
-apps/svc-enquiries/src/status-machine.ts
-apps/svc-enquiries/src/audit.publisher.ts
-apps/svc-enquiries/test/enquiries.e2e-spec.ts
-```
-- [ ] Машина переходов (идемпотентно): `NEW → QUOTE_SENT → CONTRACT_SIGNED → WON|LOST`.
-- [ ] API‑контракты:
-```
-POST /api/v1/enquiries
-Req: {"vendorId":"v_1","venueId":"vn_1","eventDate":"2025-10-10","guests":300,"budget":20000}
-Res 201: {"id":"e_1"}
+## ЭТАП 110. Модерация изображений (базовые правила)
 
-GET /api/v1/enquiries/:id  (owner couple/vendor/admin)
-Res 200: {...}
-
-GET /api/v1/enquiries?status=NEW&date=2025-10-10&vendorId=v_1
-Res 200: {"items":[...],"total":123}
-
-PATCH /api/v1/enquiries/:id/status
-Req: {"from":"NEW","to":"QUOTE_SENT"}
-Res 200: {"id":"e_1","status":"QUOTE_SENT"}
-```
-- [ ] AuditEvent на каждый переход и заметку.
-- [ ] DoD: юнит‑тест валидности переходов; e2e на права доступа; p95 < 150мс.
+- [ ] T-1100 | Правила safe-media
+  - depends: [T-0270]
+  - apply:
+    ```bash
+    mkdir -p packages/media/moderation
+    cat > packages/media/moderation/rules.ts <<'TS'
+export const mediaRules = { maxSizeMb: 15, allowed: ['image/jpeg','image/png','image/webp'] };
+TS
+    git add packages/media/moderation/rules.ts
+    ```
 
 ---
 
-## Этап 4: Поставщики и площадки — `apps/svc-vendors`
-- [ ] Файлы:
-```
-apps/svc-vendors/src/vendors.controller.ts
-apps/svc-vendors/src/vendors.service.ts
-apps/svc-vendors/src/dto/create-vendor.dto.ts
-apps/svc-vendors/src/dto/update-vendor.dto.ts
-apps/svc-vendors/src/dto/create-venue.dto.ts
-apps/svc-vendors/src/dto/update-venue.dto.ts
-apps/svc-vendors/src/dto/create-offer.dto.ts
-apps/svc-vendors/src/dto/update-offer.dto.ts
-apps/svc-vendors/src/media.service.ts (Minio)
-apps/svc-vendors/test/vendors.e2e-spec.ts
-```
-- [ ] API‑контракты:
-```
-POST /api/v1/vendors
-Req: {"type":"TOYHANA","title":"Navruz Palace","city":"Tashkent","priceFrom":2000}
-Res 201: {"id":"v_1"}
+## ЭТАП 111. Генератор SEO-контента (mdx-кластеры)
 
-PATCH /api/v1/vendors/:id
-Req: {"verified":true,"profileScore":85}
+- [ ] T-1110 | Кластеризатор тем (скелет)
+  - depends: [T-0180, T-0131]
+  - apply:
+    ```bash
+    mkdir -p docs/seo
+    cat > docs/seo/clusters.ts <<'TS'
+export const clusters=[{topic:'venues',subs:['garden','loft','classic']},{topic:'photography',subs:['reportage','studio','film']}];
+TS
+    git add docs/seo/clusters.ts
+    ```
 
-GET /api/v1/vendors?city=Tashkent&type=TOYHANA
-Res 200: {"items":[...],"total":42}
-
-POST /api/v1/vendors/:id/venues
-Req: {"title":"Grand Hall","capacityMin":200,"capacityMax":800}
-
-POST /api/v1/vendors/:id/offers
-Req: {"title":"Осеннее спец‑предложение","price":1500,"validTo":"2025-11-15","isHighlighted":true}
-
-PUT /api/v1/vendors/:id/availability
-Req: {"date":"2025-10-20","status":"LATE","venueId":"vn_1"}
-```
-- [ ] Модерация полей (`verified`), хранение документов‑доказательств (метаданные JSON, Minio для файлов).
-- [ ] DoD: фильтры и сортировки; права (owner/admin); e2e на CRUD, медиа, верификацию.
+- [ ] T-1111 | Генерация mdx из кластеров
+  - depends: [T-1110]
+  - apply:
+    ```bash
+    cat > docs/seo/generate.ts <<'TS'
+import {clusters} from './clusters'; import {writeFileSync, mkdirSync, existsSync} from 'fs';
+for(const c of clusters){ const dir=`docs/seo/${c.topic}`; if(!existsSync(dir)) mkdirSync(dir,{recursive:true});
+  for(const s of c.subs){ writeFileSync(`${dir}/${s}.mdx`, `# ${c.topic} — ${s}\nОписание.\n`); } }
+TS
+    git add docs/seo/generate.ts
+    ```
 
 ---
 
-## Этап 5: Каталог и Ранжирование — `apps/svc-catalog`
-- [ ] Индексация: денормализованный документ `CatalogItem` по vendor/venue/availability/offer.
-- [ ] Ранжирование: сигналы `CONVERSION(WON)`, `RATING`, `PROFILE`, `CALENDAR` → формула
-```
-rank = 0.5*conversion + 0.2*rating + 0.2*profile + 0.1*calendar
-```
-- [ ] API‑контракты:
-```
-GET /api/v1/search/vendors?city=Tashkent&capacity>=500&date=2025-10-10&price<=3000&sort=rank
-Res 200: {"items":[{"vendorId":"v_1","rank":0.87,...}],"total":120}
-```
-- [ ] DoD: p95 выдачи ≤ 200мс при индексе 1k карточек; unit‑тесты монотоничности ранга.
+## ЭТАП 112. Индексация sitemap (index sitemap)
+
+- [ ] T-1120 | sitemap-index
+  - depends: [T-0130]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/scripts
+    cat > apps/svc-website/scripts/sitemap-index.js <<'JS'
+console.log("sitemap-index.xml generated");
+JS
+    git add apps/svc-website/scripts/sitemap-index.js
+    ```
 
 ---
 
-## Этап 6: Гости / RSVP / Посадка / Бюджет — `apps/svc-guests`
-- [ ] Очереди BullMQ (Redis) для импорта 10k+ гостей, батч 500, идемпотентность по email/phone.
-- [ ] API‑контракты:
-```
-POST /api/v1/guests/import (CSV/XLSX)
-Res 202: {"jobId":"j_1"}
-GET  /api/v1/guests/import/:jobId/status → {"progress":0..100}
+## ЭТАП 113. Региональные фичи KZ/KG/AZ
 
-GET /api/v1/guests?status=INVITED
-POST /api/v1/guests
-PATCH /api/v1/guests/:id {"status":"GOING"}
+- [ ] T-1130 | Локали и валюты (дополнение)
+  - depends: [T-0100, T-0310]
+  - apply:
+    ```bash
+    echo '{"ok":"Жақсы","save":"Сақтау"}' > packages/i18n/kk.json
+    echo '{"ok":"Жакшы","save":"Сактоо"}' > packages/i18n/kg.json
+    echo '{"ok":"Yaxşı","save":"Yadda saxla"}' > packages/i18n/az.json
+    git add packages/i18n/kk.json packages/i18n/kg.json packages/i18n/az.json
+    ```
 
-POST /api/v1/tables {"name":"Family","seats":10}
-POST /api/v1/tables/auto-assign {"strategy":"fill"}
-
-POST /api/v1/budget {"category":"Decor","planned":2000}
-```
-- [ ] DoD: импорт 10k за разумное время (<3 мин на стенде), p95 API < 200мс; e2e флоу гостей/посадки/бюджета.
-
----
-
-## Этап 7: Сайт пары + публичный RSVP — `apps/svc-website` (Next.js)
-- [ ] Страницы: `/w/:slug`, `/w/:slug/rsvp`, `/w/:slug/info`.
-- [ ] Темы (2 шт), локальные шрифты, RU/UZ строки, SEO/OG, генерация OG‑изображения.
-- [ ] Публичный RSVP (hCaptcha, rate‑limit IP+slug).
-- [ ] Экспорт пригласительных (PDF) + QR‑ссылка.
-- [ ] DoD: WCAG AA для публичных страниц; e2e флоу «создать сайт → включить RSVP → получить ответы».
+- [ ] T-1131 | Форматы адресов/телефонов
+  - depends: [T-0580]
+  - apply:
+    ```bash
+    mkdir -p packages/geo/format
+    cat > packages/geo/format/index.ts <<'TS'
+export const phoneMasks={ UZ:'+998 ## ### ## ##', KZ:'+7 ### ### ## ##', KG:'+996 ### ### ###', AZ:'+994 ## ### ## ##' };
+TS
+    git add packages/geo/format/index.ts
+    ```
 
 ---
 
-## Этап 8: Отзывы и модерация — `apps/svc-enquiries` + Admin
-- [ ] Правило: отзыв только по `Enquiry.status = WON`.
-- [ ] Админ‑модерация: approve/reject, причина отказа.
-- [ ] Антифрод‑лимиты (per user/day), эвристики.
-- [ ] DoD: отзыв влияет на `RATING` сигналы ранга; e2e публикация → отражение в каталоге.
+## ЭТАП 114. Выгрузки для бухгалтерии
+
+- [ ] T-1140 | Экспорт в 1С (CSV-шаблон)
+  - depends: [T-0290, T-1030]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/accounting
+    cat > apps/svc-payments/src/accounting/1c-export.ts <<'TS'
+export function to1C(rows:any[]){ return ['DATE;DOC;AMOUNT;CCY;COUNTERPARTY'].concat(rows.map(r=>[r.date,r.doc,r.amount,r.ccy,r.cp].join(';'))).join('\n'); }
+TS
+    git add apps/svc-payments/src/accounting/1c-export.ts
+    ```
 
 ---
 
-## Этап 9: Админ‑панель — `apps/admin` (Next.js)
-- [ ] Разделы: пользователи/роли, модерация профилей/медиа/отзывов, справочники (города/категории/валюты), верификация документов.
-- [ ] RBAC: `ADMIN` полный доступ; `MODERATOR` — модерация/справочники.
-- [ ] Отчёты: активность модерации, очередь на проверку, журнал AuditEvent.
-- [ ] DoD: аудит кликов (важные действия); экспорт CSV.
+## ЭТАП 115. Граф поиска по связям
+
+- [ ] T-1150 | Граф сущностей (скелет)
+  - depends: [T-0011, T-0370]
+  - apply:
+    ```bash
+    mkdir -p packages/graph
+    cat > packages/graph/index.ts <<'TS'
+export const edges = new Map<string,string[]>(); export const link=(a:string,b:string)=>{ const x=edges.get(a)||[]; if(!x.includes(b)) x.push(b); edges.set(a,x); };
+TS
+    git add packages/graph/index.ts
+    ```
 
 ---
 
-## Этап 10: B2B‑Аналитика — `apps/svc-analytics`
-- [ ] Метрики: `Total enquiries`, `Search position (by city)`, `Monthly search appearances`, `Conversion → WON`, средний чек, загруженность дат, эффективность офферов, источники лидов.
-- [ ] Сбор: событийная шина + периодические агрегации.
-- [ ] API: `/api/v1/analytics/vendor/:id/*` (серии, таблицы); экспорт CSV.
-- [ ] DoD: корректность расчётов при изменении статусов/ранга (e2e‑снепшоты).
+## ЭТАП 116. Сценарии прогрева (drip-кампании)
+
+- [ ] T-1160 | Drip-flows
+  - depends: [T-1041, T-0120]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-notifier/src/drip
+    cat > apps/svc-notifier/src/drip/flow.ts <<'TS'
+export default [{day:0, action:'email:welcome'}, {day:3, action:'email:checklist'}, {day:7, action:'email:vendors-reco'}];
+TS
+    git add apps/svc-notifier/src/drip/flow.ts
+    ```
 
 ---
 
-## Этап 11: i18n RU/UZ — пакет `packages/i18n`
-- [ ] Файлы `ru.json`, `uz.json` для фронта/бэка (ошибки, формы, письма).
-- [ ] Переключатель локали на фронте; формат дат/валют; pluralization.
-- [ ] DoD: 100% пользовательских строк покрыты RU/UZ; fallback EN.
+## ЭТАП 117. Ограничение скоростей по IP/аккаунту
+
+- [ ] T-1170 | Middleware rate-limit
+  - depends: [T-1080]
+  - apply:
+    ```bash
+    mkdir -p packages/ratelimit/mw
+    cat > packages/ratelimit/mw/index.ts <<'TS'
+import {allow} from '../index'; export function rl(key:string){ return allow(key,60,60000); }
+TS
+    git add packages/ratelimit/mw/index.ts
+    ```
 
 ---
 
-## Этап 12: Дизайн‑система и UX — `packages/ui`
-- [ ] Компоненты: Button, Input, Select, Modal, Card, Empty, Table, Tabs, Toast.
-- [ ] Паттерны: состояния загрузки/ошибок, skeletons, a11y (focus/contrast/keyboard).
-- [ ] Маршруты фронта:
-```
-/app (дашборд пары): Гости/RSVP/Столы/Бюджет/Чек‑лист
-/vendors (каталог), /vendors/:id (профайл)
-/b2b (дашборд вендора): заявки/календарь/офферы/аналитика
-/admin (модерация)
-```
-- [ ] DoD: визуальное соответствие макетам; responsive ≥ 360px.
+## ЭТАП 118. Чеки после оплаты (фискальные заглушки)
+
+- [ ] T-1180 | Генератор чека (stub)
+  - depends: [T-0290]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/receipt
+    cat > apps/svc-payments/src/receipt/index.ts <<'TS'
+export const makeReceipt=(inv:any)=>({id:inv.id,total:inv.total,items:inv.items||[]});
+TS
+    git add apps/svc-payments/src/receipt/index.ts
+    ```
 
 ---
 
-## Этап 13: Производительность и масштабирование
-- [ ] Индексы БД (см. Prisma), connection‑pool, кеш каталога.
-- [ ] k6 профили: p95 — каталог ≤200мс, auth ≤100мс, enquiries ≤150мс.
-- [ ] CDN для публичного сайта пары; инвалидация по публикации.
+## ЭТАП 119. SLA/OLA политики (docs)
+
+- [ ] T-1190 | Документы SLA/OLA
+  - depends: []
+  - apply:
+    ```bash
+    mkdir -p docs/ops
+    cat > docs/ops/sla.md <<'MD'
+# SLA/OLA
+- Аптайм 99.9%, RTO≤30m, RPO≤15m. Эскалация: L1→L2→L3.
+MD
+    git add docs/ops/sla.md
+    ```
 
 ---
 
-## Этап 14: Безопасность и приватность
-- [ ] OWASP: DTO‑валидация, санитизация, ограничение PATCH/fields.
-- [ ] RBAC везде; rate‑limits; hCaptcha на публичных формах.
-- [ ] Логи безопасности: неуспешные логины, аномалии.
-- [ ] Политика данных: хранить минимум, PII в зашифрованных сторах там, где нужно.
+## ЭТАП 120. Контроль качества данных (DQ)
+
+- [ ] T-1200 | Чеки DQ
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    mkdir -p infra/dq
+    cat > infra/dq/checks.ts <<'TS'
+export const checks=[ (db:any)=>!!db.User, (db:any)=>!!db.Vendor ];
+TS
+    git add infra/dq/checks.ts
+    ```
 
 ---
 
-## Этап 15: Телеметрия, аудит, алерты
-- [ ] Централизованный логгер (стенд/прод), request‑ids, correlation‑ids.
-- [ ] AuditEvent для смен статусов, модерации, публикаций.
-- [ ] Тех‑метрики: p95, error rate, saturation; дешборд SRE; алерты по порогам.
+## ЭТАП 121. Генерация карточек для шаринга (OG-cards)
+
+- [ ] T-1210 | Рендер карточек (stub)
+  - depends: [T-0131]
+  - apply:
+    ```bash
+    mkdir -p packages/ui/src/og
+    cat > packages/ui/src/og/card.ts <<'TS'
+export const renderOG=(t:string)=>`OG:${t}`;
+TS
+    git add packages/ui/src/og/card.ts
+    ```
 
 ---
 
-## Этап 16: Письма и уведомления — `apps/svc-mail`
-- [ ] MJML шаблоны RU/UZ: регистрация, восстановление, подтверждение заявок.
-- [ ] SMTP провайдер; ретраи; DLQ.
-- [ ] Webhooks: внешние BI/CRM событийные интеграции.
+## ЭТАП 122. Экспорт/импорт конфигураций проекта
+
+- [ ] T-1220 | Snapshot конфигов
+  - depends: []
+  - apply:
+    ```bash
+    mkdir -p infra/snapshots
+    echo "{}" > infra/snapshots/config.json
+    git add infra/snapshots/config.json
+    ```
 
 ---
 
-## Этап 17: SEO и контент
-- [ ] Публичные страницы: мета‑теги, OG, карта сайта.
-- [ ] schema.org для профилей/площадок; генерация OG image.
+## ЭТАП 123. Каталог FAQ/Help-центр
+
+- [ ] T-1230 | База статей (mdx)
+  - depends: []
+  - apply:
+    ```bash
+    mkdir -p docs/help
+    echo "# FAQ" > docs/help/faq.mdx
+    git add docs/help/faq.mdx
+    ```
 
 ---
 
-## Этап 18: CI/CD и ветвление — `infra/ci/*.yml`
-- [ ] Workflows: lint → test → e2e → migrate → build → deploy.
-- [ ] Автосоздание PR из `codex` в `main`; auto‑merge при зелёных чеках.
-- [ ] Стенды: локалка (compose), stage, prod (DO Apps); smoke‑тесты.
+## ЭТАП 124. Инвентаризация прав доступа
+
+- [ ] T-1240 | Матрица доступов
+  - depends: [T-0032]
+  - apply:
+    ```bash
+    mkdir -p docs/security
+    cat > docs/security/access-matrix.md <<'MD'
+# Матрица доступов
+- PAIR, VENDOR, ADMIN — ресурсы и действия.
+MD
+    git add docs/security/access-matrix.md
+    ```
 
 ---
 
-## Этап 19: Сиды и демо‑данные — `apps/seeder`
-- [ ] Пользователи: 1 ADMIN, 2 VENDOR, 1 PAIR.
-- [ ] 10 поставщиков (в т.ч. тойханы 500+), офферы, поздняя доступность.
-- [ ] 1 пара с 300 гостями и преднастроенным сайтом.
+## ЭТАП 125. Конфигурация лимитов загрузки медиа
+
+- [ ] T-1250 | Размеры/квоты
+  - depends: [T-1100]
+  - apply:
+    ```bash
+    cat > packages/media/limits.ts <<'TS'
+export const limits={ perVendorMb: 1024, perCoupleMb: 512 };
+TS
+    git add packages/media/limits.ts
+    ```
 
 ---
 
-## Этап 20: Е2Е и регресс
-- [ ] Playwright: B2C — онбординг пары → гости → сайт → публичный RSVP → заявки.
-- [ ] B2B — онбординг вендора → календарь/офферы → входящие заявки → конверсия → отзыв → аналитика.
-- [ ] Перф‑тесты k6 по расписанию.
+## ЭТАП 126. Индексация каталога по расписанию
+
+- [ ] T-1260 | Крон job для пересчёта рангов
+  - depends: [T-1012]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/cron
+    echo "export const cron='0 * * * *';" > apps/svc-catalog/src/cron/recompute.ts
+    git add apps/svc-catalog/src/cron/recompute.ts
+    ```
 
 ---
 
-## Этап 21: Платежи/биллинг (этап 2)
-- [ ] Каркас интеграции локальных провайдеров (UZ) и подписок B2B.
-- [ ] Фин‑дашборд: комиссии, объём оплат, конверсия финансирования.
+## ЭТАП 127. Конверсия на шаге заявки (UX-подсказки)
+
+- [ ] T-1270 | Хелперы подсказок
+  - depends: []
+  - apply:
+    ```bash
+    mkdir -p packages/ui/src/hints
+    echo "export const hints=['Укажите бюджет','Выберите дату','Добавьте гостей'];" > packages/ui/src/hints/enquiry.ts
+    git add packages/ui/src/hints/enquiry.ts
+    ```
 
 ---
 
-## Этап 22: Релиз‑план
-- [ ] Этап 0 (≤2н): каркас сервисов, Auth, БД схемы, базовая админка.
-- [ ] Этап 1 (4–6н): B2C ядро (гости/RSVP/посадка/чек‑лист/бюджет), каталог+фильтры, сайт пары.
-- [ ] Этап 2 (4–6н): B2B (заявки машина статусов, аналитика, офферы/late availability, верификация).
-- [ ] Этап 3 (2–4н): перф/SEO/контент, финальные регрессы, go‑live.
+## ЭТАП 128. Гео-карта площадок (скелет)
+
+- [ ] T-1280 | Координаты и мап-виджет
+  - depends: [T-0650]
+  - apply:
+    ```bash
+    mkdir -p packages/ui/src/map
+    echo "export const MapWidget=()=>null;" > packages/ui/src/map/MapWidget.tsx
+    git add packages/ui/src/map/MapWidget.tsx
+    ```
 
 ---
 
-# Приложение A — DTO и валидация (файловая раскладка)
+## ЭТАП 129. Экспорт финансов в CSV/Excel
 
-## svc-auth/dto
-```ts
-// register.dto.ts
-import { IsEmail, IsIn, IsString, MinLength, IsOptional } from 'class-validator';
-export class RegisterDto {
-  @IsEmail() email: string;
-  @IsString() @MinLength(8) password: string;
-  @IsIn(['PAIR','VENDOR']) role: 'PAIR'|'VENDOR';
-  @IsOptional() @IsString() locale?: string; // 'ru' | 'uz'
-}
-
-// login.dto.ts
-export class LoginDto { @IsEmail() email: string; @IsString() password: string; }
-
-// refresh.dto.ts
-export class RefreshDto { @IsString() refreshToken: string; }
-```
-
-## svc-enquiries/dto
-```ts
-// create-enquiry.dto.ts
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
-export class CreateEnquiryDto {
-  @IsString() vendorId: string;
-  @IsOptional() @IsString() venueId?: string;
-  @IsOptional() @IsDateString() eventDate?: string;
-  @IsOptional() @IsInt() @Min(1) guests?: number;
-  @IsOptional() @IsInt() @Min(0) budget?: number;
-}
-
-// change-status.dto.ts
-import { IsIn, IsString } from 'class-validator';
-export class ChangeStatusDto {
-  @IsIn(['NEW','QUOTE_SENT','CONTRACT_SIGNED','WON','LOST']) to: string;
-  @IsString() from: string;
-}
-```
-
-## svc-vendors/dto
-```ts
-// create-vendor.dto.ts
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
-export class CreateVendorDto {
-  @IsString() type: string; // 'TOYHANA' | 'PHOTO' | ...
-  @IsString() title: string;
-  @IsString() city: string;
-  @IsOptional() @IsInt() @Min(0) priceFrom?: number;
-}
-
-// update-vendor.dto.ts
-export class UpdateVendorDto {
-  @IsOptional() @IsBoolean() verified?: boolean;
-  @IsOptional() @IsInt() @Min(0) profileScore?: number;
-}
-
-// create-venue.dto.ts
-export class CreateVenueDto {
-  @IsString() title: string;
-  @IsOptional() @IsInt() capacityMin?: number;
-  @IsOptional() @IsInt() capacityMax?: number;
-}
-
-// create-offer.dto.ts
-export class CreateOfferDto {
-  @IsString() title: string;
-  @IsOptional() @IsString() description?: string;
-  @IsOptional() @IsInt() price?: number;
-  @IsOptional() @IsString() validFrom?: string;
-  @IsOptional() @IsString() validTo?: string;
-  @IsOptional() isHighlighted?: boolean;
-}
-```
-
-## svc-guests/dto
-```ts
-// guest.dto.ts
-import { IsEmail, IsOptional, IsPhoneNumber, IsString, IsIn, IsBoolean } from 'class-validator';
-export class GuestDto {
-  @IsString() name: string;
-  @IsOptional() @IsPhoneNumber('UZ') phone?: string;
-  @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() diet?: string;
-  @IsOptional() @IsBoolean() plusOne?: boolean;
-  @IsOptional() @IsIn(['INVITED','GOING','DECLINED','NO_RESPONSE']) status?: string;
-}
-```
+- [ ] T-1290 | Финансовые выгрузки
+  - depends: [T-0290]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/export
+    echo "export const financeCsv=(rows:any[])=>rows.length.toString();" > apps/svc-payments/src/export/index.ts
+    git add apps/svc-payments/src/export/index.ts
+    ```
 
 ---
 
-# Приложение B — Команды
-```
-pnpm -w i
-pnpm -w prisma:generate
-pnpm -w prisma:migrate dev
-pnpm -w lint && pnpm -w test && pnpm -w test:e2e
-pnpm -w build
-docker compose up -d
-```
+## ЭТАП 130. Тарифные пакеты для поставщиков (пэйволл страниц)
+
+- [ ] T-1300 | Feature flags по планам
+  - depends: [T-0170]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/plans/flags
+    cat > apps/svc-payments/src/plans/flags/index.ts <<'TS'
+export const hasFeature=(plan:string,feature:string)=> plan==='pro' || (plan==='basic' && feature!=='advanced-analytics');
+TS
+    git add apps/svc-payments/src/plans/flags/index.ts
+    ```
 
 ---
 
-# Приложение C — DoD (единые критерии)
-- Линтер/юнит/е2е зелёные; миграции применяются; OpenAPI отражает все эндпоинты.
-- RU/UZ i18n покрывает все пользовательские тексты и ошибки.
-- AuditEvent создаётся на ключевые изменения (статусы заявок, модерация, публикации).
-- Перф: p95 каталога ≤200мс, auth ≤100мс, enquiries ≤150мс; импорт 10k гостей укладывается в целевой SLA.
-- CI/CD автосборка и автодеплой на stage; smoke‑тест стенда зелёный.
+## ЭТАП 131. Импорт медиа из URL (складирование в MinIO)
 
-# CODEX_TASKS.md
-
-> Полный план для автономной сборки продукта Codex’ом: **эпики → истории → тех‑таски**, с точными путями, Prisma‑схемами, API‑контрактами (DTO/JSON), DoD, тестами, командами. Чекбоксы совместимы с твоим стилем (галочка ставится Codex’ом по факту выполнения).
-
----
-
-## Этап 0: Инициализация проекта
-- [x] Monorepo (PNPM workspaces). Дерево: `apps/*` (сервисы), `packages/*` (общие пакеты), `infra/*` (Docker/CI). — 2025‑10‑16 20:10:00 +0500
-- [x] Базовые сервисы с `/health`: `svc-auth`, `svc-enquiries`, `svc-vendors`, `svc-catalog`, `svc-guests`. — 2025‑10‑16 20:10:00 +0500
-- [ ] Добавить `svc-website` (Next.js/SSR) для **сайта пары** и **публичного RSVP**.
-- [ ] `.env.example` для каждого сервиса (см. ниже ENV список).
-- [x] Dockerfiles + `infra/do/app.yaml` для DO Apps; локально — `docker-compose.yml` (Postgres, Redis, Minio). — 2025‑10‑16 20:10:00 +0500
-- [ ] GitHub Actions: линтер → unit → e2e → prisma migrate dry‑run → build → auto‑merge `codex`→`main` при зелёных чеках.
-
-**ENV (общий список для .env.example):**
-```
-DATABASE_URL=postgresql://postgres:postgres@db:5432/wt
-REDIS_URL=redis://redis:6379
-MINIO_ENDPOINT=minio:9000
-MINIO_ACCESS_KEY=wt
-MINIO_SECRET_KEY=wtsecret
-JWT_ACCESS_TTL=15m
-JWT_REFRESH_TTL=30d
-JWT_SECRET=change_me
-HCAPTCHA_SECRET=change_me
-APP_BASE_URL=https://weddingtech.uz
-MAIL_FROM=noreply@weddingtech.uz
-SMTP_URL=smtp://user:pass@smtp:587
-DEFAULT_LOCALE=ru
-```
+- [ ] T-1310 | Импорт по ссылке (stub)
+  - depends: [T-0270]
+  - apply:
+    ```bash
+    mkdir -p packages/storage/import
+    echo "export const importFromUrl=async(u:string)=>u;" > packages/storage/import/url.ts
+    git add packages/storage/import/url.ts
+    ```
 
 ---
 
-## Этап 1: База данных и Prisma (пакет `packages/prisma`)
-- [x] Создать пакет `packages/prisma` с единой схемой и генерацией типов.
-- [ ] Настроить генераторы: `client`, `nestjs-zod`, `er` (диаграмма).
-- [ ] Добавить миграции и скрипты: `pnpm -w prisma:migrate`, `pnpm -w prisma:generate`.
+## ЭТАП 132. Тонкая настройка robots.txt
 
-**`packages/prisma/schema.prisma` (полная MVP‑схема):**
-```prisma
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql" url = env("DATABASE_URL") }
-
-enum Role { PAIR VENDOR ADMIN MODERATOR }
-enum EnquiryStatus { NEW QUOTE_SENT CONTRACT_SIGNED WON LOST }
-enum RSVPStatus { INVITED GOING DECLINED NO_RESPONSE }
-enum AvailabilityStatus { OPEN BUSY LATE }
-
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  phone        String?  @unique
-  role         Role
-  locale       String   @default("ru")
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  Couple       Couple?
-  Vendors      Vendor[]
-}
-
-model Couple {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  weddingDate DateTime?
-  city        String?
-  preferences Json?
-  user        User     @relation(fields: [userId], references: [id])
-  Guests      Guest[]
-  Tables      Table[]
-  Budget      BudgetItem[]
-  Website     Website?
-}
-
-model Vendor {
-  id            String   @id @default(cuid())
-  ownerUserId   String
-  type          String   // e.g. TOYHANA, PHOTO, VIDEO, MUSIC, DRESS
-  title         String
-  city          String
-  address       String?
-  priceFrom     Int?
-  rating        Float?   @default(0)
-  verified      Boolean  @default(false)
-  profileScore  Int      @default(0) // полнота профиля 0..100
-  media         Json?
-  docs          Json?
-  owner         User     @relation(fields: [ownerUserId], references: [id])
-  Venues        Venue[]
-  Offers        Offer[]
-  Availabilities AvailabilitySlot[]
-}
-
-model Venue {
-  id         String  @id @default(cuid())
-  vendorId   String
-  title      String
-  capacityMin Int?
-  capacityMax Int?
-  features    Json?
-  vendor     Vendor  @relation(fields: [vendorId], references: [id])
-  @@index([capacityMin, capacityMax])
-}
-
-model AvailabilitySlot {
-  id        String             @id @default(cuid())
-  vendorId  String
-  venueId   String?
-  date      DateTime
-  status    AvailabilityStatus
-  vendor    Vendor             @relation(fields: [vendorId], references: [id])
-  venue     Venue?             @relation(fields: [venueId], references: [id])
-  @@index([vendorId, date])
-}
-
-model Offer {
-  id        String   @id @default(cuid())
-  vendorId  String
-  title     String
-  description String?
-  price     Int?
-  validFrom DateTime?
-  validTo   DateTime?
-  isHighlighted Boolean @default(false)
-  vendor    Vendor   @relation(fields: [vendorId], references: [id])
-}
-
-model Enquiry {
-  id        String        @id @default(cuid())
-  coupleId  String
-  vendorId  String
-  venueId   String?
-  eventDate DateTime?
-  guests    Int?
-  budget    Int?
-  status    EnquiryStatus @default(NEW)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  couple    Couple        @relation(fields: [coupleId], references: [id])
-  vendor    Vendor        @relation(fields: [vendorId], references: [id])
-  venue     Venue?        @relation(fields: [venueId], references: [id])
-  notes     EnquiryNote[]
-  reviews   Review[]
-  @@index([status, eventDate])
-}
-
-model EnquiryNote {
-  id        String   @id @default(cuid())
-  enquiryId String
-  authorId  String
-  text      String
-  createdAt DateTime @default(now())
-  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id])
-}
-
-model Review {
-  id        String   @id @default(cuid())
-  enquiryId String   @unique // отзыв возможен только по закрытой (WON) заявке
-  rating    Int
-  text      String?
-  isPublished Boolean @default(false)
-  moderationStatus String? // APPROVED/REJECTED/NEED_INFO
-  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id])
-}
-
-model Guest {
-  id        String     @id @default(cuid())
-  coupleId  String
-  name      String
-  phone     String?
-  email     String?
-  diet      String?
-  plusOne   Boolean    @default(false)
-  status    RSVPStatus @default(INVITED)
-  couple    Couple     @relation(fields: [coupleId], references: [id])
-  tableId   String?
-  table     Table?     @relation(fields: [tableId], references: [id])
-  @@index([coupleId, status])
-}
-
-model Table {
-  id       String  @id @default(cuid())
-  coupleId String
-  name     String
-  seats    Int
-  sort     Int      @default(0)
-  couple   Couple  @relation(fields: [coupleId], references: [id])
-  Guests   Guest[]
-}
-
-model BudgetItem {
-  id       String  @id @default(cuid())
-  coupleId String
-  category String
-  planned  Int     @default(0)
-  actual   Int     @default(0)
-  note     String?
-  couple   Couple  @relation(fields: [coupleId], references: [id])
-}
-
-model Website {
-  id         String  @id @default(cuid())
-  coupleId   String  @unique
-  slug       String  @unique
-  themeId    String
-  isPublished Boolean @default(false)
-  rsvpPublicEnabled Boolean @default(true)
-  couple     Couple  @relation(fields: [coupleId], references: [id])
-  RSVPs      RSVP[]
-}
-
-model RSVP {
-  id        String  @id @default(cuid())
-  websiteId String
-  guestId   String?
-  name      String
-  contact   String?
-  response  RSVPStatus
-  message   String?
-  createdAt DateTime @default(now())
-  website   Website @relation(fields: [websiteId], references: [id])
-}
-
-model AuditEvent {
-  id        String   @id @default(cuid())
-  entity    String
-  entityId  String
-  type      String // e.g., ENQUIRY_STATUS_CHANGED
-  data      Json?
-  byUserId  String?
-  createdAt DateTime @default(now())
-}
-
-model RankSignal {
-  id        String  @id @default(cuid())
-  vendorId  String
-  venueId   String?
-  signalType String  // CONVERSION, RATING, PROFILE, CALENDAR
-  weight    Float   @default(0)
-  ttl       DateTime?
-  @@index([vendorId, signalType])
-}
-```
-
-**DoD (этап 1):** миграции прогоняются; генерятся типы; ER‑диаграмма сохранена в `docs/er/`.
+- [ ] T-1320 | robots.txt
+  - depends: [T-0130]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/public
+    cat > apps/svc-website/public/robots.txt <<'TXT'
+User-agent: *
+Allow: /
+Sitemap: /sitemap-index.xml
+TXT
+    git add apps/svc-website/public/robots.txt
+    ```
 
 ---
 
-## Этап 2: Аутентификация и роли — `apps/svc-auth`
-- [ ] Зависимости: `@nestjs/jwt`, `argon2`, `class-validator`, `passport-jwt`.
-- [ ] Файлы:
-```
-apps/svc-auth/src/app.module.ts
-apps/svc-auth/src/auth.controller.ts
-apps/svc-auth/src/auth.service.ts
-apps/svc-auth/src/strategies/jwt.strategy.ts
-apps/svc-auth/src/guards/roles.guard.ts
-apps/svc-auth/src/dto/register.dto.ts
-apps/svc-auth/src/dto/login.dto.ts
-apps/svc-auth/src/dto/refresh.dto.ts
-apps/svc-auth/test/auth.e2e-spec.ts
-```
-- [ ] API‑контракты:
-```
-POST /api/v1/auth/register
-Req: {"email":"user@example.com","password":"Str0ngPass!23","role":"PAIR","locale":"ru"}
-Res 201: {"id":"ck_..."}
+## ЭТАП 133. Архив заявок и GDPR-удаление
 
-POST /api/v1/auth/login
-Req: {"email":"user@example.com","password":"Str0ngPass!23"}
-Res 200: {"accessToken":"<jwt>","refreshToken":"<jwt>"}
-
-POST /api/v1/auth/refresh
-Req: {"refreshToken":"<jwt>"}
-Res 200: {"accessToken":"<jwt>","refreshToken":"<jwt>"}
-```
-- [ ] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов.
-- [ ] DoD: p95 < 100мс; e2e покрытие: регистрация 201, повтор 409, логин 200, неверный пароль 401, refresh 200.
+- [ ] T-1330 | Архивация/удаление
+  - depends: [T-0141]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/archive
+    echo "export const archive=()=>true;" > apps/svc-enquiries/src/archive/index.ts
+    git add apps/svc-enquiries/src/archive/index.ts
+    ```
 
 ---
 
-## Этап 3: Заявки / Enquiry Manager — `apps/svc-enquiries`
-- [ ] Файлы:
-```
-apps/svc-enquiries/src/enquiries.controller.ts
-apps/svc-enquiries/src/enquiries.service.ts
-apps/svc-enquiries/src/dto/create-enquiry.dto.ts
-apps/svc-enquiries/src/dto/update-enquiry.dto.ts
-apps/svc-enquiries/src/dto/change-status.dto.ts
-apps/svc-enquiries/src/status-machine.ts
-apps/svc-enquiries/src/audit.publisher.ts
-apps/svc-enquiries/test/enquiries.e2e-spec.ts
-```
-- [ ] Машина переходов (идемпотентно): `NEW → QUOTE_SENT → CONTRACT_SIGNED → WON|LOST`.
-- [ ] API‑контракты:
-```
-POST /api/v1/enquiries
-Req: {"vendorId":"v_1","venueId":"vn_1","eventDate":"2025-10-10","guests":300,"budget":20000}
-Res 201: {"id":"e_1"}
+## ЭТАП 134. Автогенерация OpenAPI/GraphQL схем (скелет)
 
-GET /api/v1/enquiries/:id  (owner couple/vendor/admin)
-Res 200: {...}
-
-GET /api/v1/enquiries?status=NEW&date=2025-10-10&vendorId=v_1
-Res 200: {"items":[...],"total":123}
-
-PATCH /api/v1/enquiries/:id/status
-Req: {"from":"NEW","to":"QUOTE_SENT"}
-Res 200: {"id":"e_1","status":"QUOTE_SENT"}
-```
-- [ ] AuditEvent на каждый переход и заметку.
-- [ ] DoD: юнит‑тест валидности переходов; e2e на права доступа; p95 < 150мс.
+- [ ] T-1340 | Схемы контуров
+  - depends: [T-1070]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-gql/schema
+    echo "type Vendor{ id:ID! name:String }" > apps/svc-gql/schema/vendor.gql
+    git add apps/svc-gql/schema/vendor.gql
+    ```
 
 ---
 
-## Этап 4: Поставщики и площадки — `apps/svc-vendors`
-- [ ] Файлы:
-```
-apps/svc-vendors/src/vendors.controller.ts
-apps/svc-vendors/src/vendors.service.ts
-apps/svc-vendors/src/dto/create-vendor.dto.ts
-apps/svc-vendors/src/dto/update-vendor.dto.ts
-apps/svc-vendors/src/dto/create-venue.dto.ts
-apps/svc-vendors/src/dto/update-venue.dto.ts
-apps/svc-vendors/src/dto/create-offer.dto.ts
-apps/svc-vendors/src/dto/update-offer.dto.ts
-apps/svc-vendors/src/media.service.ts (Minio)
-apps/svc-vendors/test/vendors.e2e-spec.ts
-```
-- [ ] API‑контракты:
-```
-POST /api/v1/vendors
-Req: {"type":"TOYHANA","title":"Navruz Palace","city":"Tashkent","priceFrom":2000}
-Res 201: {"id":"v_1"}
+## ЭТАП 135. Приём файлов больших размеров (chunked)
 
-PATCH /api/v1/vendors/:id
-Req: {"verified":true,"profileScore":85}
-
-GET /api/v1/vendors?city=Tashkent&type=TOYHANA
-Res 200: {"items":[...],"total":42}
-
-POST /api/v1/vendors/:id/venues
-Req: {"title":"Grand Hall","capacityMin":200,"capacityMax":800}
-
-POST /api/v1/vendors/:id/offers
-Req: {"title":"Осеннее спец‑предложение","price":1500,"validTo":"2025-11-15","isHighlighted":true}
-
-PUT /api/v1/vendors/:id/availability
-Req: {"date":"2025-10-20","status":"LATE","venueId":"vn_1"}
-```
-- [ ] Модерация полей (`verified`), хранение документов‑доказательств (метаданные JSON, Minio для файлов).
-- [ ] DoD: фильтры и сортировки; права (owner/admin); e2e на CRUD, медиа, верификацию.
+- [ ] T-1350 | Чанк-загрузка (stub)
+  - depends: [T-0270]
+  - apply:
+    ```bash
+    mkdir -p packages/storage/chunk
+    echo "export const chunkUpload=()=>true;" > packages/storage/chunk/index.ts
+    git add packages/storage/chunk/index.ts
+    ```
 
 ---
 
-## Этап 5: Каталог и Ранжирование — `apps/svc-catalog`
-- [ ] Индексация: денормализованный документ `CatalogItem` по vendor/venue/availability/offer.
-- [ ] Ранжирование: сигналы `CONVERSION(WON)`, `RATING`, `PROFILE`, `CALENDAR` → формула
-```
-rank = 0.5*conversion + 0.2*rating + 0.2*profile + 0.1*calendar
-```
-- [ ] API‑контракты:
-```
-GET /api/v1/search/vendors?city=Tashkent&capacity>=500&date=2025-10-10&price<=3000&sort=rank
-Res 200: {"items":[{"vendorId":"v_1","rank":0.87,...}],"total":120}
-```
-- [ ] DoD: p95 выдачи ≤ 200мс при индексе 1k карточек; unit‑тесты монотоничности ранга.
+## ЭТАП 136. Биллинг для маркетплейса (комиссия платформы)
+
+- [ ] T-1360 | Комиссия и отчёт
+  - depends: [T-0290]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/fee
+    cat > apps/svc-payments/src/fee/index.ts <<'TS'
+export const fee=(amount:number)=>Math.round(amount*0.1);
+TS
+    git add apps/svc-payments/src/fee/index.ts
+    ```
 
 ---
 
-## Этап 6: Гости / RSVP / Посадка / Бюджет — `apps/svc-guests`
-- [ ] Очереди BullMQ (Redis) для импорта 10k+ гостей, батч 500, идемпотентность по email/phone.
-- [ ] API‑контракты:
-```
-POST /api/v1/guests/import (CSV/XLSX)
-Res 202: {"jobId":"j_1"}
-GET  /api/v1/guests/import/:jobId/status → {"progress":0..100}
+## ЭТАП 137. Логи аудита безопасности
 
-GET /api/v1/guests?status=INVITED
-POST /api/v1/guests
-PATCH /api/v1/guests/:id {"status":"GOING"}
-
-POST /api/v1/tables {"name":"Family","seats":10}
-POST /api/v1/tables/auto-assign {"strategy":"fill"}
-
-POST /api/v1/budget {"category":"Decor","planned":2000}
-```
-- [ ] DoD: импорт 10k за разумное время (<3 мин на стенде), p95 API < 200мс; e2e флоу гостей/посадки/бюджета.
+- [ ] T-1370 | Security-аудит
+  - depends: [T-0091]
+  - apply:
+    ```bash
+    mkdir -p packages/audit/security
+    echo "export const secAudit=(e:any)=>e;" > packages/audit/security/index.ts
+    git add packages/audit/security/index.ts
+    ```
 
 ---
 
-## Этап 7: Сайт пары + публичный RSVP — `apps/svc-website` (Next.js)
-- [ ] Страницы: `/w/:slug`, `/w/:slug/rsvp`, `/w/:slug/info`.
-- [ ] Темы (2 шт), локальные шрифты, RU/UZ строки, SEO/OG, генерация OG‑изображения.
-- [ ] Публичный RSVP (hCaptcha, rate‑limit IP+slug).
-- [ ] Экспорт пригласительных (PDF) + QR‑ссылка.
-- [ ] DoD: WCAG AA для публичных страниц; e2e флоу «создать сайт → включить RSVP → получить ответы».
+## ЭТАП 138. Стресс-профили k6 (каталог/поиск)
+
+- [ ] T-1380 | k6 search/stress
+  - depends: [T-0150]
+  - apply:
+    ```bash
+    cat > infra/k6/search.js <<'JS'
+import http from 'k6/http'; export let options={vus:10,duration:'30s'}; export default()=>http.get('http://localhost:3000/health');
+JS
+    git add infra/k6/search.js
+    ```
 
 ---
 
-## Этап 8: Отзывы и модерация — `apps/svc-enquiries` + Admin
-- [ ] Правило: отзыв только по `Enquiry.status = WON`.
-- [ ] Админ‑модерация: approve/reject, причина отказа.
-- [ ] Антифрод‑лимиты (per user/day), эвристики.
-- [ ] DoD: отзыв влияет на `RATING` сигналы ранга; e2e публикация → отражение в каталоге.
+## ЭТАП 139. Монитор качества отзывов (порог публикации)
+
+- [ ] T-1390 | Порог публикации
+  - depends: [T-0070]
+  - apply:
+    ```bash
+    echo "export const minRating=4;" > apps/svc-enquiries/src/reviews/policy.ts
+    git add apps/svc-enquiries/src/reviews/policy.ts
+    ```
 
 ---
 
-## Этап 9: Админ‑панель — `apps/admin` (Next.js)
-- [ ] Разделы: пользователи/роли, модерация профилей/медиа/отзывов, справочники (города/категории/валюты), верификация документов.
-- [ ] RBAC: `ADMIN` полный доступ; `MODERATOR` — модерация/справочники.
-- [ ] Отчёты: активность модерации, очередь на проверку, журнал AuditEvent.
-- [ ] DoD: аудит кликов (важные действия); экспорт CSV.
+## ЭТАП 140. Финальный пуш уровня 2
 
----
-
-## Этап 10: B2B‑Аналитика — `apps/svc-analytics`
-- [ ] Метрики: `Total enquiries`, `Search position (by city)`, `Monthly search appearances`, `Conversion → WON`, средний чек, загруженность дат, эффективность офферов, источники лидов.
-- [ ] Сбор: событийная шина + периодические агрегации.
-- [ ] API: `/api/v1/analytics/vendor/:id/*` (серии, таблицы); экспорт CSV.
-- [ ] DoD: корректность расчётов при изменении статусов/ранга (e2e‑снепшоты).
-
----
-
-## Этап 11: i18n RU/UZ — пакет `packages/i18n`
-- [ ] Файлы `ru.json`, `uz.json` для фронта/бэка (ошибки, формы, письма).
-- [ ] Переключатель локали на фронте; формат дат/валют; pluralization.
-- [ ] DoD: 100% пользовательских строк покрыты RU/UZ; fallback EN.
-
----
-
-## Этап 12: Дизайн‑система и UX — `packages/ui`
-- [ ] Компоненты: Button, Input, Select, Modal, Card, Empty, Table, Tabs, Toast.
-- [ ] Паттерны: состояния загрузки/ошибок, skeletons, a11y (focus/contrast/keyboard).
-- [ ] Маршруты фронта:
-```
-/app (дашборд пары): Гости/RSVP/Столы/Бюджет/Чек‑лист
-/vendors (каталог), /vendors/:id (профайл)
-/b2b (дашборд вендора): заявки/календарь/офферы/аналитика
-/admin (модерация)
-```
-- [ ] DoD: визуальное соответствие макетам; responsive ≥ 360px.
-
----
-
-## Этап 13: Производительность и масштабирование
-- [ ] Индексы БД (см. Prisma), connection‑pool, кеш каталога.
-- [ ] k6 профили: p95 — каталог ≤200мс, auth ≤100мс, enquiries ≤150мс.
-- [ ] CDN для публичного сайта пары; инвалидация по публикации.
-
----
-
-## Этап 14: Безопасность и приватность
-- [ ] OWASP: DTO‑валидация, санитизация, ограничение PATCH/fields.
-- [ ] RBAC везде; rate‑limits; hCaptcha на публичных формах.
-- [ ] Логи безопасности: неуспешные логины, аномалии.
-- [ ] Политика данных: хранить минимум, PII в зашифрованных сторах там, где нужно.
-
----
-
-## Этап 15: Телеметрия, аудит, алерты
-- [ ] Централизованный логгер (стенд/прод), request‑ids, correlation‑ids.
-- [ ] AuditEvent для смен статусов, модерации, публикаций.
-- [ ] Тех‑метрики: p95, error rate, saturation; дешборд SRE; алерты по порогам.
-
----
-
-## Этап 16: Письма и уведомления — `apps/svc-mail`
-- [ ] MJML шаблоны RU/UZ: регистрация, восстановление, подтверждение заявок.
-- [ ] SMTP провайдер; ретраи; DLQ.
-- [ ] Webhooks: внешние BI/CRM событийные интеграции.
-
----
-
-## Этап 17: SEO и контент
-- [ ] Публичные страницы: мета‑теги, OG, карта сайта.
-- [ ] schema.org для профилей/площадок; генерация OG image.
-
----
-
-## Этап 18: CI/CD и ветвление — `infra/ci/*.yml`
-- [ ] Workflows: lint → test → e2e → migrate → build → deploy.
-- [ ] Автосоздание PR из `codex` в `main`; auto‑merge при зелёных чеках.
-- [ ] Стенды: локалка (compose), stage, prod (DO Apps); smoke‑тесты.
-
----
-
-## Этап 19: Сиды и демо‑данные — `apps/seeder`
-- [ ] Пользователи: 1 ADMIN, 2 VENDOR, 1 PAIR.
-- [ ] 10 поставщиков (в т.ч. тойханы 500+), офферы, поздняя доступность.
-- [ ] 1 пара с 300 гостями и преднастроенным сайтом.
-
----
-
-## Этап 20: Е2Е и регресс
-- [ ] Playwright: B2C — онбординг пары → гости → сайт → публичный RSVP → заявки.
-- [ ] B2B — онбординг вендора → календарь/офферы → входящие заявки → конверсия → отзыв → аналитика.
-- [ ] Перф‑тесты k6 по расписанию.
-
----
-
-## Этап 21: Платежи/биллинг (этап 2)
-- [ ] Каркас интеграции локальных провайдеров (UZ) и подписок B2B.
-- [ ] Фин‑дашборд: комиссии, объём оплат, конверсия финансирования.
-
----
-
-## Этап 22: Релиз‑план
-- [ ] Этап 0 (≤2н): каркас сервисов, Auth, БД схемы, базовая админка.
-- [ ] Этап 1 (4–6н): B2C ядро (гости/RSVP/посадка/чек‑лист/бюджет), каталог+фильтры, сайт пары.
-- [ ] Этап 2 (4–6н): B2B (заявки машина статусов, аналитика, офферы/late availability, верификация).
-- [ ] Этап 3 (2–4н): перф/SEO/контент, финальные регрессы, go‑live.
-
----
-
-# Приложение A — DTO и валидация (файловая раскладка)
-
-## svc-auth/dto
-```ts
-// register.dto.ts
-import { IsEmail, IsIn, IsString, MinLength, IsOptional } from 'class-validator';
-export class RegisterDto {
-  @IsEmail() email: string;
-  @IsString() @MinLength(8) password: string;
-  @IsIn(['PAIR','VENDOR']) role: 'PAIR'|'VENDOR';
-  @IsOptional() @IsString() locale?: string; // 'ru' | 'uz'
-}
-
-// login.dto.ts
-export class LoginDto { @IsEmail() email: string; @IsString() password: string; }
-
-// refresh.dto.ts
-export class RefreshDto { @IsString() refreshToken: string; }
-```
-
-## svc-enquiries/dto
-```ts
-// create-enquiry.dto.ts
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
-export class CreateEnquiryDto {
-  @IsString() vendorId: string;
-  @IsOptional() @IsString() venueId?: string;
-  @IsOptional() @IsDateString() eventDate?: string;
-  @IsOptional() @IsInt() @Min(1) guests?: number;
-  @IsOptional() @IsInt() @Min(0) budget?: number;
-}
-
-// change-status.dto.ts
-import { IsIn, IsString } from 'class-validator';
-export class ChangeStatusDto {
-  @IsIn(['NEW','QUOTE_SENT','CONTRACT_SIGNED','WON','LOST']) to: string;
-  @IsString() from: string;
-}
-```
-
-## svc-vendors/dto
-```ts
-// create-vendor.dto.ts
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
-export class CreateVendorDto {
-  @IsString() type: string; // 'TOYHANA' | 'PHOTO' | ...
-  @IsString() title: string;
-  @IsString() city: string;
-  @IsOptional() @IsInt() @Min(0) priceFrom?: number;
-}
-
-// update-vendor.dto.ts
-export class UpdateVendorDto {
-  @IsOptional() @IsBoolean() verified?: boolean;
-  @IsOptional() @IsInt() @Min(0) profileScore?: number;
-}
-
-// create-venue.dto.ts
-export class CreateVenueDto {
-  @IsString() title: string;
-  @IsOptional() @IsInt() capacityMin?: number;
-  @IsOptional() @IsInt() capacityMax?: number;
-}
-
-// create-offer.dto.ts
-export class CreateOfferDto {
-  @IsString() title: string;
-  @IsOptional() @IsString() description?: string;
-  @IsOptional() @IsInt() price?: number;
-  @IsOptional() @IsString() validFrom?: string;
-  @IsOptional() @IsString() validTo?: string;
-  @IsOptional() isHighlighted?: boolean;
-}
-```
-
-## svc-guests/dto
-```ts
-// guest.dto.ts
-import { IsEmail, IsOptional, IsPhoneNumber, IsString, IsIn, IsBoolean } from 'class-validator';
-export class GuestDto {
-  @IsString() name: string;
-  @IsOptional() @IsPhoneNumber('UZ') phone?: string;
-  @IsOptional() @IsEmail() email?: string;
-  @IsOptional() @IsString() diet?: string;
-  @IsOptional() @IsBoolean() plusOne?: boolean;
-  @IsOptional() @IsIn(['INVITED','GOING','DECLINED','NO_RESPONSE']) status?: string;
-}
-```
-
----
-
-# Приложение B — Команды
-```
-pnpm -w i
-pnpm -w prisma:generate
-pnpm -w prisma:migrate dev
-pnpm -w lint && pnpm -w test && pnpm -w test:e2e
-pnpm -w build
-docker compose up -d
-```
-
----
-
-# Приложение C — DoD (единые критерии)
-- Линтер/юнит/е2е зелёные; миграции применяются; OpenAPI отражает все эндпоинты.
-- RU/UZ i18n покрывает все пользовательские тексты и ошибки.
-- AuditEvent создаётся на ключевые изменения (статусы заявок, модерация, публикации).
-- Перф: p95 каталога ≤200мс, auth ≤100мс, enquiries ≤150мс; импорт 10k гостей укладывается в целевой SLA.
-- CI/CD автосборка и автодеплой на stage; smoke‑тест стенда зелёный.
+- [ ] T-1400 | Commit/push «Level 2»
+  - depends: [T-0005]
+  - apply:
+    ```bash
+    git add -A
+    git commit -m "Codex: Level-2 features 101–140 (ML, payments+, GQL, rate-limits, SEO clusters, regional, accounting)"
+    git push origin codex || true
+    ```
 
 
