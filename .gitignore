@@ -18,3 +18,5 @@ frontend/.next/
 .config/codex/config.json
 .codex/config.toml
 .config/
+.config/
+.codex/config.toml
