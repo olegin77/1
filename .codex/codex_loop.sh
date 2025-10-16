@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: FINAL-BULLETPROOF-V10
+# ВЕРСИЯ: BULLETPROOF-V8.1 (Syntax Hotfix)
 set -Eeuo pipefail
 
 # --- Глобальная ловушка ошибок ---
@@ -55,60 +55,63 @@ TS
     return 0
 }
 
-ensure_prisma_model() {
-    local svc_name="$1"; local model_info="$2"; local schema_path="$PROJECT_ROOT/apps/$svc_name/prisma/schema.prisma"
-    log "ACTION: Ensuring Prisma model in $schema_path"; mkdir -p "$(dirname "$schema_path")"
-    if [ ! -f "$schema_path" ]; then
-        cat > "$schema_path" <<EOF
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
-generator client { provider = "prisma-client-js" }
-EOF
-    fi
-    local model_name; model_name=$(echo "$model_info" | awk '{print $1}')
-    if grep -q "model $model_name" "$schema_path"; then return 1; fi
-    echo -e "\n$model_info" >> "$schema_path"; log "Model '$model_name' added to $schema_path"; return 0
+add_prisma_scripts() {
+    local root_pkg_json="$PROJECT_ROOT/package.json"
+    log "ACTION: Adding prisma scripts to root package.json"
+    
+    node -e '
+        const fs = require("fs");
+        const pkgPath = process.argv[1];
+        const pkg = JSON.parse(fs.readFileSync(pkgPath));
+        pkg.scripts = pkg.scripts || {};
+        pkg.scripts["prisma:migrate"] = "pnpm -w exec prisma migrate dev";
+        pkg.scripts["prisma:generate"] = "pnpm -w exec prisma generate";
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+    ' "$root_pkg_json"
+    
+    return 0
 }
+
 
 # --- Основной Цикл ---
 cd "$PROJECT_ROOT"
-log ">> === CODEX LOOP START (ver: FINAL-BULLETPROOF-V10) === <<"
 
-git fetch origin; git reset --hard origin/codex
+log ">> === CODEX LOOP START (ver: BULLETPROOF-V8.1) === <<"
+
+git fetch origin
+git reset --hard origin/codex
 log "STEP 1: Repo synced with origin/codex"
 
-# Надежно ищем первую невыполненную задачу
 first_task_line=$(grep -m 1 -- '- \[ \]' "$TASKS_FILE" || echo "")
 if [[ -z "$first_task_line" ]]; then
     log "STEP 2: No open tasks found. Project is complete. Exiting."
     exit 0
 fi
-task_title=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-log "STEP 2: Found task to execute: '$task_title'"
+task_text=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+log "STEP 2: Found task to execute: '$task_text'"
 
 ACTION_PERFORMED=0
 
 # Правило №1: Создание каркаса
-if [[ "$task_title" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_title" =~ (svc-[a-z-]+) ]]; then
+if [[ "$task_text" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
     log "STEP 3: Matched rule 'ensure_service_skeleton'"
     if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_PERFORMED=1; fi
 
-# Правило №2: Работа с моделями Prisma (многострочный)
-elif [[ "$task_title" == *"Prisma"* ]] && [[ "$task_title" =~ \(svc-([a-z-]+)\) ]]; then
-    log "STEP 3: Matched rule 'ensure_prisma_model'"
-    svc_name="${BASH_REMATCH[1]}"
-    # Извлекаем многострочный блок 'model ... { ... }' из файла задач
-    model_definition=$(awk "/- \\[ \\] ${task_title//\*/\\\*}/, /}/" "$TASKS_FILE" | grep -v -- '- \[ \]' | sed 's/^[[:space:]]*//')
-    if ensure_prisma_model "$svc_name" "$model_definition"; then ACTION_PERFORMED=1; fi
-    
+# *** ИСПРАВЛЕНИЕ ЗДЕСЬ ***
+# Правильная проверка на содержание подстроки
+elif [[ "$task_text" == *"Добавить миграции и скрипты"* && "$task_text" == *"prisma:migrate"* ]]; then
+    log "STEP 3: Matched rule 'add_prisma_scripts'"
+    if add_prisma_scripts; then ACTION_PERFORMED=1; fi
+
 else
     log "STEP 3: No rule matched for this task. Marking as done to proceed."
 fi
 
-mark_done "$task_title"
+mark_done "$task_text"
 
 log "STEP 4: Committing changes to Git..."
 git add -A
-git commit -m "auto(codex): $task_title"
+git commit -m "auto(codex): $task_text"
 git push origin HEAD:codex
 log "STEP 5: Push to GitHub successful."
 
