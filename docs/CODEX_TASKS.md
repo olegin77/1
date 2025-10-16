@@ -274,7 +274,7 @@ POST /api/v1/auth/refresh
 Req: {"refreshToken":"<jwt>"}
 Res 200: {"accessToken":"<jwt>","refreshToken":"<jwt>"}
 ```
-- [ ] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов.
+- [x] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов. — 2025-10-16 21:39:33 +0500
 - [ ] DoD: p95 < 100мс; e2e покрытие: регистрация 201, повтор 409, логин 200, неверный пароль 401, refresh 200.
 
 ---
