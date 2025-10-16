@@ -248,7 +248,7 @@ model RankSignal {
 
 ## Этап 2: Аутентификация и роли — `apps/svc-auth`
 - [x] Зависимости: `@nestjs/jwt`, `argon2`, `class-validator`, `passport-jwt`. — 2025-10-16 21:20:50 +0500
-- [x] Файлы: — 2025-10-16 21:26:17 +0500
+- [x] Файлы: — 2025-10-16 21:26:17 +0500 — 2025-10-16 21:42:16 +0500 — 2025-10-16 21:43:18 +0500
 ```
 apps/svc-auth/src/app.module.ts
 apps/svc-auth/src/auth.controller.ts
@@ -260,7 +260,7 @@ apps/svc-auth/src/dto/login.dto.ts
 apps/svc-auth/src/dto/refresh.dto.ts
 apps/svc-auth/test/auth.e2e-spec.ts
 ```
-- [ ] API‑контракты:
+- [x] API‑контракты: — 2025-10-16 21:36:46 +0500
 ```
 POST /api/v1/auth/register
 Req: {"email":"user@example.com","password":"Str0ngPass!23","role":"PAIR","locale":"ru"}
@@ -274,8 +274,8 @@ POST /api/v1/auth/refresh
 Req: {"refreshToken":"<jwt>"}
 Res 200: {"accessToken":"<jwt>","refreshToken":"<jwt>"}
 ```
-- [ ] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов.
-- [ ] DoD: p95 < 100мс; e2e покрытие: регистрация 201, повтор 409, логин 200, неверный пароль 401, refresh 200.
+- [x] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов. — 2025-10-16 21:39:33 +0500
+- [x] DoD: p95 < 100мс; e2e покрытие: регистрация 201, повтор 409, логин 200, неверный пароль 401, refresh 200. — 2025-10-16 21:40:02 +0500
 
 ---
 

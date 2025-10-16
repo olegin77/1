@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: BULLETPROOF-V9 (Обучен работе с Prisma Models)
+# ВЕРСИЯ: BULLETPROOF-V8.1 (Syntax Hotfix)
 set -Eeuo pipefail
 
 # --- Глобальная ловушка ошибок ---
@@ -55,42 +55,20 @@ TS
     return 0
 }
 
-# НОВОЕ УМЕНИЕ: Создание/обновление моделей Prisma
-ensure_prisma_model() {
-    local svc_name="$1"
-    local model_info="$2"
-    local schema_path="$PROJECT_ROOT/apps/$svc_name/prisma/schema.prisma"
+add_prisma_scripts() {
+    local root_pkg_json="$PROJECT_ROOT/package.json"
+    log "ACTION: Adding prisma scripts to root package.json"
     
-    log "ACTION: Ensuring Prisma model in $schema_path"
-    mkdir -p "$(dirname "$schema_path")"
-
-    # Если файла нет, создаем его с базовым заголовком
-    if [ ! -f "$schema_path" ]; then
-        cat > "$schema_path" <<EOF
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-EOF
-    fi
-
-    # Извлекаем имя модели (первое слово)
-    local model_name; model_name=$(echo "$model_info" | awk '{print $1}')
+    node -e '
+        const fs = require("fs");
+        const pkgPath = process.argv[1];
+        const pkg = JSON.parse(fs.readFileSync(pkgPath));
+        pkg.scripts = pkg.scripts || {};
+        pkg.scripts["prisma:migrate"] = "pnpm -w exec prisma migrate dev";
+        pkg.scripts["prisma:generate"] = "pnpm -w exec prisma generate";
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+    ' "$root_pkg_json"
     
-    # Если модель с таким именем уже есть, выходим
-    if grep -q "model $model_name" "$schema_path"; then
-        log "Model '$model_name' already exists in $schema_path. Skipping."
-        return 1
-    fi
-    
-    # Добавляем модель в конец файла
-    echo -e "\n$model_info" >> "$schema_path"
-    log "Model '$model_name' added to $schema_path"
     return 0
 }
 
@@ -98,7 +76,7 @@ EOF
 # --- Основной Цикл ---
 cd "$PROJECT_ROOT"
 
-log ">> === CODEX LOOP START (ver: BULLETPROOF-V9) === <<"
+log ">> === CODEX LOOP START (ver: BULLETPROOF-V8.1) === <<"
 
 git fetch origin
 git reset --hard origin/codex
@@ -120,14 +98,12 @@ if [[ "$task_title" == *"Создать каркас NestJS-сервиса"* ]] 
     log "STEP 3: Matched rule 'ensure_service_skeleton'"
     if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_PERFORMED=1; fi
 
-# НОВОЕ ПРАВИЛО №2: Работа с моделями Prisma
-elif [[ "$task_title" == *"Prisma"* ]] && [[ "$task_title" =~ \(svc-([a-z-]+)\) ]] && [[ "$task_block" == *"model "* ]]; then
-    log "STEP 3: Matched rule 'ensure_prisma_model'"
-    svc_name="${BASH_REMATCH[1]}"
-    # Извлекаем блок 'model ... { ... }' из описания задачи
-    model_definition=$(echo "$task_block" | awk '/model/,/}/')
-    if ensure_prisma_model "$svc_name" "$model_definition"; then ACTION_PERFORMED=1; fi
-    
+# *** ИСПРАВЛЕНИЕ ЗДЕСЬ ***
+# Правильная проверка на содержание подстроки
+elif [[ "$task_text" == *"Добавить миграции и скрипты"* && "$task_text" == *"prisma:migrate"* ]]; then
+    log "STEP 3: Matched rule 'add_prisma_scripts'"
+    if add_prisma_scripts; then ACTION_PERFORMED=1; fi
+
 else
     log "STEP 3: No rule matched for this task. Marking as done to proceed."
 fi

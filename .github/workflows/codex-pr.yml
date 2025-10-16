@@ -1,4 +1,6 @@
-name: codex-pr
+# .github/workflows/codex-pr.yml
+
+name: 'codex-pr'
 
 on:
   push:
