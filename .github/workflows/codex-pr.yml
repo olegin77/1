@@ -1,61 +1,30 @@
-name: codex-pr
+# .github/workflows/codex-pr.yml
+
+name: 'Codex PR'
 
 on:
   push:
-    branches: [codex]
-
-permissions:
-  contents: write
-  pull-requests: write
+    branches:
+      - 'codex'
+    # ❗️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ:
+    # Запускаем воркфлоу, ТОЛЬКО если изменения коснулись чего-либо ВНЕ папки /docs
+    paths-ignore:
+      - 'docs/**'
 
 jobs:
-  pr:
+  create-pr:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 'Create or Update PR'
+        uses: gr2m/create-or-update-pull-request-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          fetch-depth: 0
-
-      - name: Ensure GitHub CLI installed
-        run: |
-          if ! command -v gh >/dev/null 2>&1; then
-            sudo apt-get update -y
-            sudo apt-get install -y gh
-          fi
-
-      - name: Check diff codex vs main
-        id: diff
-        run: |
-          git fetch origin main codex --quiet
-          if git diff --quiet origin/main..origin/codex; then
-            echo "has_diff=false" >> "$GITHUB_OUTPUT"
-            echo "No diff between origin/main and origin/codex"
-          else
-            echo "has_diff=true" >> "$GITHUB_OUTPUT"
-            echo "Diff detected"
-          fi
-
-      - name: Ensure PR codex -> main exists
-        if: steps.diff.outputs.has_diff == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          prnum="$(gh pr list --state open --base main --head codex --json number --jq '.[0].number' || true)"
-          if [[ -z "${prnum:-}" ]]; then
-            echo "Creating PR codex -> main..."
-            gh pr create --base main --head codex \
-              --title "auto: codex update" \
-              --body "Auto PR from codex."
-            prnum="$(gh pr list --state open --base main --head codex --json number --jq '.[0].number')"
-          else
-            echo "PR #$prnum already exists."
-          fi
-          echo "PR_NUMBER=$prnum" >> "$GITHUB_ENV"
-
-      - name: Enable auto-merge (squash; best-effort)
-        if: env.PR_NUMBER != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr merge "$PR_NUMBER" --squash --auto || echo "automerge not enabled; continue"
+          owner: ${{ github.repository_owner }}
+          repo: ${{ github.event.repository.name }}
+          branch: 'codex'
+          title: 'auto: codex update'
+          body: 'Автоматическое обновление кода от Codex-агента.'
+          author: 'olegin77 <codex@automation.local>'
+          # Важно: разрешаем пустые коммиты, чтобы PR не закрывался
+          allow_empty_commits: true
