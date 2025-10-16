@@ -30,3 +30,11 @@ services:
     source_dir: /apps/svc-vendors
   health_check:
     http_path: /health
+
+- name: svc-auth
+  git:
+    repo: ${repo.name}
+    branch: ${repo.branch}
+    source_dir: /apps/svc-auth
+  health_check:
+    http_path: /health
