@@ -1,45 +1,58 @@
----
-agent:
-  name: codex
-  mode: fully_automatic
-  approvals:
-    require_approval: false
-    ask_to_proceed: "never"
-    human_in_the_loop: "none"
-    auto_confirm: true
-  safety:
-    confirm_shell: false
-    confirm_file_write: false
-    confirm_commit: false
-  execution:
-    max_iterations: 800
-    stop_on_test_failure: true
-    continue_on_error: false
-    retry_attempts: 1
-  tasks:
-    source: "docs/CODEX_TASKS.md"
-    format: "checklist"
-    autoadvance: true
-    dependency_key: "depends"
-    code_block_lang: "bash"
-    done_markers: ["[x]", "[X]"]
-  git:
-    enabled: true
-    branch: "codex"                      # агент коммитит сюда
-    commit_strategy: "one_commit_per_task"
-    sign_commits: false
-    push: true
-  schedule:
-    on_file_change:
-      - "docs/CODEX_TASKS.md"
-      - "docs/TECH_SPEC.md"
-    cron: "*/10 * * * *"
+# Codex Agents Configuration
+
+## Execution
+mode: fully_automatic
+approvals:
+  require_approval: false
+  ask_to_proceed: "never"
+  human_in_the_loop: "none"
+  auto_confirm: true
+safety:
+  confirm_shell: false
+  confirm_file_write: false
+  confirm_commit: false
+
+tasks:
+  source: "docs/CODEX_TASKS.md"
+  format: "checklist"
+  code_block_lang: "bash"
+  stop_on_failure: false
+  one_commit_per_task: true
+  respect_depends: true
+  idempotent_steps: true
+
+git:
+  enabled: true
+  branch: "codex"
+  push: true
+  commit_strategy: "one_commit_per_task"
+  commit_message_template: "Codex: {{task_id}} {{task_title}}"
+
 repo_policy:
-  protected_branch: false
-  require_pull_request: false
-  required_approvals: 0
-  allow_direct_push: true
+  protected_branch: true
+  default_branch: "main"
+  allow_direct_push: false
+  require_pull_request: true
+  pull_request:
+    base: "main"
+    head: "codex"
+    title: "Codex Auto PR"
+    body: "Automated changes from Codex tasks."
+    labels: ["automerge", "codex"]
+    draft: false
+
 auto_merge:
-  enabled: false
----
+  enabled: true
+  strategy: "merge"    # merge | squash | rebase
+  require_status_checks: true
+  required_labels: ["automerge"]
+  block_on_change_requests: true
+
+ci:
+  expect:
+    - ".github/workflows/ci.yml"
+
+telemetry:
+  log_commits: true
+  log_failures: true
 
