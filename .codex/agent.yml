@@ -1,8 +1,25 @@
+version: 1
 agent:
   mode: fully_automatic
-  require_approval: false
-  auto_confirm: true
+  approvals:
+    require_approval: false
+    ask_to_proceed: "never"
+    human_in_the_loop: "none"
+    auto_confirm: true
+  safety:
+    confirm_shell: false
+    confirm_file_write: false
+    confirm_commit: false
   tasks:
     source: "docs/CODEX_TASKS.md"
-    format: checklist
-  branch: codex
+    format: "checklist"
+    code_block_lang: "bash"
+    autoadvance: true
+  git:
+    enabled: true
+    branch: "codex"
+    commit_strategy: "one_commit_per_task"
+    push: true
+  sandbox:
+    allow_exec: ["codex","bash","git","node","pnpm","script"]
+    no_tty: true
