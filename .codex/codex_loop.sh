@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: BULLETPROOF-V8 (Обучен работе с Prisma)
+# ВЕРСИЯ: BULLETPROOF-V9 (Обучен работе с Prisma Models)
 set -Eeuo pipefail
 
 # --- Глобальная ловушка ошибок ---
@@ -15,7 +15,6 @@ ts(){ date '+%F %T %z'; }
 log(){ echo >&2 "[$(ts)] $*"; }
 
 mark_done(){
-    # ... (код этой функции без изменений)
     local text_to_mark="$1"; local temp_file; temp_file=$(mktemp)
     awk -v text="$text_to_mark" -v stamp="$(ts)" 'BEGIN{done=0} !done&&index($0,text){sub(/- \[ \]/,"- [x]");print $0" — "stamp; done=1; next} {print}' "$TASKS_FILE" > "$temp_file" && mv "$temp_file" "$TASKS_FILE"
     log "Task marked as done: '$text_to_mark'"
@@ -24,7 +23,6 @@ mark_done(){
 # --- Ядро Исполнителя ---
 
 ensure_service_skeleton() {
-    # ... (код этой функции без изменений)
     local svc_name="$1"; local app_dir="$PROJECT_ROOT/apps/$svc_name"; [ -d "$app_dir" ] && return 1
     log "ACTION: Scaffolding new service: $svc_name"; mkdir -p "$app_dir/src/health"
     cp "$PROJECT_ROOT/apps/svc-enquiries/tsconfig.json" "$app_dir/tsconfig.json"
@@ -57,64 +55,88 @@ TS
     return 0
 }
 
-# НОВОЕ УМЕНИЕ: Добавление скриптов Prisma в корневой package.json
-add_prisma_scripts() {
-    local root_pkg_json="$PROJECT_ROOT/package.json"
-    log "ACTION: Adding prisma scripts to root package.json"
+# НОВОЕ УМЕНИЕ: Создание/обновление моделей Prisma
+ensure_prisma_model() {
+    local svc_name="$1"
+    local model_info="$2"
+    local schema_path="$PROJECT_ROOT/apps/$svc_name/prisma/schema.prisma"
     
-    # Используем Node.js для безопасного редактирования JSON
-    node -e '
-        const fs = require("fs");
-        const pkgPath = process.argv[1];
-        const pkg = JSON.parse(fs.readFileSync(pkgPath));
-        pkg.scripts = pkg.scripts || {};
-        pkg.scripts["prisma:migrate"] = "pnpm -w exec prisma migrate dev";
-        pkg.scripts["prisma:generate"] = "pnpm -w exec prisma generate";
-        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-    ' "$root_pkg_json"
+    log "ACTION: Ensuring Prisma model in $schema_path"
+    mkdir -p "$(dirname "$schema_path")"
+
+    # Если файла нет, создаем его с базовым заголовком
+    if [ ! -f "$schema_path" ]; then
+        cat > "$schema_path" <<EOF
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+EOF
+    fi
+
+    # Извлекаем имя модели (первое слово)
+    local model_name; model_name=$(echo "$model_info" | awk '{print $1}')
     
-    return 0 # Успех
+    # Если модель с таким именем уже есть, выходим
+    if grep -q "model $model_name" "$schema_path"; then
+        log "Model '$model_name' already exists in $schema_path. Skipping."
+        return 1
+    fi
+    
+    # Добавляем модель в конец файла
+    echo -e "\n$model_info" >> "$schema_path"
+    log "Model '$model_name' added to $schema_path"
+    return 0
 }
 
 
 # --- Основной Цикл ---
 cd "$PROJECT_ROOT"
 
-log ">> === CODEX LOOP START (ver: BULLETPROOF-V8) === <<"
+log ">> === CODEX LOOP START (ver: BULLETPROOF-V9) === <<"
 
 git fetch origin
 git reset --hard origin/codex
 log "STEP 1: Repo synced with origin/codex"
 
-first_task_line=$(grep -m 1 -- '- \[ \]' "$TASKS_FILE" || echo "")
-if [[ -z "$first_task_line" ]]; then
+# Ищем первую задачу и весь ее многострочный контекст
+task_block=$(awk '/^- \[ \] / {if (p) exit; p=1} p && /^- \[/ && NR>1 {exit} p' "$TASKS_FILE")
+if [[ -z "$task_block" ]]; then
     log "STEP 2: No open tasks found. Project is complete. Exiting."
     exit 0
 fi
-task_text=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-log "STEP 2: Found task to execute: '$task_text'"
+task_title=$(echo "$task_block" | head -n 1 | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+log "STEP 2: Found task to execute: '$task_title'"
 
 ACTION_PERFORMED=0
 
 # Правило №1: Создание каркаса
-if [[ "$task_text" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
+if [[ "$task_title" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_title" =~ (svc-[a-z-]+) ]]; then
     log "STEP 3: Matched rule 'ensure_service_skeleton'"
     if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_PERFORMED=1; fi
 
-# НОВОЕ ПРАВИЛО №2: Добавление скриптов Prisma
-elif [[ "$task_text" == *"Добавить миграции и скрипты"* ]] && [[ "$task_text" == *"`pnpm -w prisma:migrate`"* ]]; then
-    log "STEP 3: Matched rule 'add_prisma_scripts'"
-    if add_prisma_scripts; then ACTION_PERFORMED=1; fi
-
+# НОВОЕ ПРАВИЛО №2: Работа с моделями Prisma
+elif [[ "$task_title" == *"Prisma"* ]] && [[ "$task_title" =~ \(svc-([a-z-]+)\) ]] && [[ "$task_block" == *"model "* ]]; then
+    log "STEP 3: Matched rule 'ensure_prisma_model'"
+    svc_name="${BASH_REMATCH[1]}"
+    # Извлекаем блок 'model ... { ... }' из описания задачи
+    model_definition=$(echo "$task_block" | awk '/model/,/}/')
+    if ensure_prisma_model "$svc_name" "$model_definition"; then ACTION_PERFORMED=1; fi
+    
 else
     log "STEP 3: No rule matched for this task. Marking as done to proceed."
 fi
 
-mark_done "$task_text"
+mark_done "$task_title"
 
 log "STEP 4: Committing changes to Git..."
 git add -A
-git commit -m "auto(codex): $task_text"
+git commit -m "auto(codex): $task_title"
 git push origin HEAD:codex
 log "STEP 5: Push to GitHub successful."
 
