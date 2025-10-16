@@ -23,7 +23,7 @@
 
 ## ЭТАП 0. Бутстрап монорепо, базовая инфра, CI
 
-- [ ] T-0001 | Инициализировать монорепо и структуры
+- [x] T-0001 | Инициализировать монорепо и структуры
   - depends: []
   - apply:
     ```bash
@@ -2565,5 +2565,3 @@ JS
     git commit -m "Codex: Level-2 features 101–140 (ML, payments+, GQL, rate-limits, SEO clusters, regional, accounting)"
     git push origin codex || true
     ```
-
-
