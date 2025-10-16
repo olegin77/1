@@ -10,7 +10,7 @@
 - [x] Добавить `svc-website` (Next.js/SSR) для **сайта пары** и **публичного RSVP**. — 2025-10-16 20:20:02 +0500
 - [x] `.env.example` для каждого сервиса (см. ниже ENV список). — 2025-10-16 20:40:02 +0500
 - [x] Dockerfiles + `infra/do/app.yaml` для DO Apps; локально — `docker-compose.yml` (Postgres, Redis, Minio). — 2025‑10‑16 20:10:00 +0500
-- [ ] GitHub Actions: линтер → unit → e2e → prisma migrate dry‑run → build → auto‑merge `codex`→`main` при зелёных чеках.
+- [x] GitHub Actions: линтер → unit → e2e → prisma migrate dry‑run → build → auto‑merge `codex`→`main` при зелёных чеках. — 2025-10-16 21:00:05 +0500
 
 **ENV (общий список для .env.example):**
 ```
