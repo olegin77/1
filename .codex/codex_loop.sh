@@ -105,7 +105,7 @@ elif [[ "$task_title" == *"Prisma"* ]] && [[ "$task_title" =~ \(svc-([a-z-]+)\) 
     fi
     
 else
-    log "STEP 3: No rule matched for this task. Marking as done to proceed."
+    log "STEP 3: No rule matched for '$task_title'. Marking as done to proceed."
 fi
 
 mark_done "$task_title"
