@@ -22,3 +22,11 @@ services:
       timeout_seconds: 5
       success_threshold: 1
       failure_threshold: 3
+
+- name: svc-vendors
+  git:
+    repo: ${repo.name}
+    branch: ${repo.branch}
+    source_dir: /apps/svc-vendors
+  health_check:
+    http_path: /health
