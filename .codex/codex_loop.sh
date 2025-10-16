@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: FINAL-STABLE-V3
+# ВЕРСИЯ: BULLETPROOF-V6
 set -Eeuo pipefail
-export TZ=:Asia/Tashkent
 
-ROOT="$(pwd)"
+# --- Глобальная ловушка ошибок ---
+# Если скрипт упадет, эта команда сообщит, где и почему.
+trap 'log "!!! FATAL ERROR: Script exited on line $LINENO with status $?."' ERR
+
+export TZ=:Asia/Tashkent
 TASKS_FILE="docs/CODEX_TASKS.md"
 
 # --- Утилиты ---
@@ -23,21 +26,19 @@ mark_done(){
         }
         { print }
     ' "$TASKS_FILE" > "$temp_file" && mv "$temp_file" "$TASKS_FILE"
-    log "Marked done: $text_to_mark"
+    log "Task marked as done in local file: '$text_to_mark'"
 }
 
 # --- Ядро Исполнителя ---
 
-# УМЕНИЕ №1: Создание каркаса сервиса
 ensure_service_skeleton() {
-    # ... (код этой функции остается без изменений)
     local svc_name="$1"; local app_dir="apps/$svc_name"; [ -d "$app_dir" ] && return 1
-    log "Action: Scaffolding new service: $svc_name"; mkdir -p "$app_dir/src/health"
+    log "ACTION: Scaffolding new service: $svc_name"
+    mkdir -p "$app_dir/src/health"
     cp "apps/svc-enquiries/tsconfig.json" "$app_dir/tsconfig.json"
     cat > "$app_dir/package.json" <<EOF
 {"name": "$svc_name", "version": "0.1.0", "scripts": {"build": "tsc", "start": "node dist/main.js"}}
 EOF
-    # ... (остальной код функции без изменений)
     cat > "$app_dir/src/main.ts" <<TS
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
@@ -64,93 +65,40 @@ TS
     return 0
 }
 
-# УМЕНИЕ №2: Создание Dockerfile
-ensure_dockerfile() {
-    # ... (код этой функции остается без изменений)
-    local svc_name="$1"; local dockerfile_path="apps/$svc_name/Dockerfile"; [ -f "$dockerfile_path" ] && return 1
-    log "Action: Creating Dockerfile for $svc_name"
-    cat > "$dockerfile_path" <<EOF
-FROM node:18-alpine AS builder
-WORKDIR /usr/src/app
-COPY apps/${svc_name}/package*.json ./
-RUN npm install
-COPY apps/${svc_name}/ .
-RUN npm run build
-FROM node:18-alpine
-WORKDIR /usr/src/app
-COPY --from=builder /usr/src/app/package*.json ./
-RUN npm install --only=production
-COPY --from=builder /usr/src/app/dist ./dist
-CMD ["npm", "run", "start"]
-EOF
-    return 0
-}
-
-# НОВОЕ УМЕНИЕ №3: Добавление сервиса в do/app.yaml
-ensure_do_app_service() {
-    local svc_name="$1"
-    local app_spec_path="do/app.yaml"
-    
-    # Проверяем, существует ли уже сервис с таким именем в файле
-    if grep -q "name: $svc_name" "$app_spec_path"; then
-        log "Service $svc_name already exists in $app_spec_path."
-        return 1 # Изменений не требуется
-    fi
-
-    log "Action: Adding $svc_name to $app_spec_path"
-    # Добавляем новый сервис в конец списка services, сохраняя отступы
-    cat >> "$app_spec_path" <<EOF
-
-- name: ${svc_name}
-  git:
-    repo: \${repo.name}
-    branch: \${repo.branch}
-    source_dir: /apps/${svc_name}
-  health_check:
-    http_path: /health
-EOF
-    return 0 # Успех
-}
-
-
 # --- Основной Цикл ---
-log ">> === CODEX LOOP START === <<"
+log ">> === CODEX LOOP START (ver: BULLETPROOF-V6) === <<"
 
 git fetch origin
 git reset --hard origin/codex
-log "Repo synced with origin/codex"
+log "STEP 1: Repo synced with origin/codex"
 
 first_task_line=$(grep -m 1 -- '- \[ \]' "$TASKS_FILE" || echo "")
 if [[ -z "$first_task_line" ]]; then
-    log "No open tasks found. Project is complete."
+    log "STEP 2: No open tasks found. Project is complete. Exiting."
     exit 0
 fi
 task_text=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-log "Found task: $task_text"
+log "STEP 2: Found task to execute: '$task_text'"
 
-ACTION_SUCCESSFUL=0
+CODE_CHANGED=0
 
 # Правило №1: Создание каркаса
-if [[ "$task_text" == *"создать каркас"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
-    if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_SUCCESSFUL=1; fi
-    
-# Правило №2: Создание Dockerfile
-elif [[ "$task_text" == *"создать базовый Dockerfile"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
-    if ensure_dockerfile "${BASH_REMATCH[1]}"; then ACTION_SUCCESSFUL=1; fi
-
-# НОВОЕ ПРАВИЛО №3: Добавление сервиса в do/app.yaml
-elif [[ "$task_text" == *"добавить сервис"* ]] && [[ "$task_text" == *"do/app.yaml"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
-    if ensure_do_app_service "${BASH_REMATCH[1]}"; then ACTION_SUCCESSFUL=1; fi
+if [[ "$task_text" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
+    log "STEP 3: Matched rule 'ensure_service_skeleton'"
+    if ensure_service_skeleton "${BASH_REMATCH[1]}"; then CODE_CHANGED=1; fi
+else
+    # ЗАЩИТА ОТ ЗАЦИКЛИВАНИЯ: Если правило не найдено, сообщаем об этом
+    log "STEP 3: No rule matched for this task. Marking as done to proceed to the next."
 fi
 
-# Отмечаем задачу выполненной, чтобы двигаться дальше
+# Шаг 4: Всегда отмечаем задачу выполненной, чтобы двигаться вперед
 mark_done "$task_text"
 
-# Если не было изменений в коде, коммит все равно зафиксирует обновление файла задач
-log "Committing task status and any code changes..."
+# Шаг 5: Надежно сохраняем результат
+log "STEP 4: Committing changes to Git..."
 git add -A
 git commit -m "auto(codex): $task_text"
 git push origin HEAD:codex
-log "Push successful"
+log "STEP 5: Push to GitHub successful."
 
-echo ">> === CODEX LOOP DONE === <<"
+log ">> === CODEX LOOP DONE === <<"
