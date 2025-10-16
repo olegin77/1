@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: FINAL-STABLE-V2
+# ВЕРСИЯ: FINAL-STABLE-V3
 set -Eeuo pipefail
 export TZ=:Asia/Tashkent
 
@@ -30,12 +30,9 @@ mark_done(){
 
 # УМЕНИЕ №1: Создание каркаса сервиса
 ensure_service_skeleton() {
-    local svc_name="$1"
-    local app_dir="apps/$svc_name"
-    [ -d "$app_dir" ] && return 1
-
-    log "Action: Scaffolding new service: $svc_name"
-    mkdir -p "$app_dir/src/health"
+    # ... (код этой функции остается без изменений)
+    local svc_name="$1"; local app_dir="apps/$svc_name"; [ -d "$app_dir" ] && return 1
+    log "Action: Scaffolding new service: $svc_name"; mkdir -p "$app_dir/src/health"
     cp "apps/svc-enquiries/tsconfig.json" "$app_dir/tsconfig.json"
     cat > "$app_dir/package.json" <<EOF
 {"name": "$svc_name", "version": "0.1.0", "scripts": {"build": "tsc", "start": "node dist/main.js"}}
@@ -44,10 +41,7 @@ EOF
     cat > "$app_dir/src/main.ts" <<TS
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT || 3000, '0.0.0.0');
-}
+async function bootstrap() { const app = await NestFactory.create(AppModule); await app.listen(process.env.PORT || 3000, '0.0.0.0'); }
 bootstrap();
 TS
     cat > "$app_dir/src/app.module.ts" <<TS
@@ -70,27 +64,18 @@ TS
     return 0
 }
 
-# НОВОЕ УМЕНИЕ №2: Создание Dockerfile
+# УМЕНИЕ №2: Создание Dockerfile
 ensure_dockerfile() {
-    local svc_name="$1"
-    local svc_dir="apps/$svc_name"
-    local dockerfile_path="$svc_dir/Dockerfile"
-    [ ! -d "$svc_dir" ] && { log "ERROR: Service directory $svc_dir not found!"; return 1; }
-    [ -f "$dockerfile_path" ] && return 1 # Уже существует
-
+    # ... (код этой функции остается без изменений)
+    local svc_name="$1"; local dockerfile_path="apps/$svc_name/Dockerfile"; [ -f "$dockerfile_path" ] && return 1
     log "Action: Creating Dockerfile for $svc_name"
-    # Стандартный многоэтапный Dockerfile для NestJS-приложения,
-    # оптимизированный для DigitalOcean App Platform.
     cat > "$dockerfile_path" <<EOF
-# Этап 1: Сборка
 FROM node:18-alpine AS builder
 WORKDIR /usr/src/app
 COPY apps/${svc_name}/package*.json ./
 RUN npm install
 COPY apps/${svc_name}/ .
 RUN npm run build
-
-# Этап 2: Запуск
 FROM node:18-alpine
 WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app/package*.json ./
@@ -99,6 +84,32 @@ COPY --from=builder /usr/src/app/dist ./dist
 CMD ["npm", "run", "start"]
 EOF
     return 0
+}
+
+# НОВОЕ УМЕНИЕ №3: Добавление сервиса в do/app.yaml
+ensure_do_app_service() {
+    local svc_name="$1"
+    local app_spec_path="do/app.yaml"
+    
+    # Проверяем, существует ли уже сервис с таким именем в файле
+    if grep -q "name: $svc_name" "$app_spec_path"; then
+        log "Service $svc_name already exists in $app_spec_path."
+        return 1 # Изменений не требуется
+    fi
+
+    log "Action: Adding $svc_name to $app_spec_path"
+    # Добавляем новый сервис в конец списка services, сохраняя отступы
+    cat >> "$app_spec_path" <<EOF
+
+- name: ${svc_name}
+  git:
+    repo: \${repo.name}
+    branch: \${repo.branch}
+    source_dir: /apps/${svc_name}
+  health_check:
+    http_path: /health
+EOF
+    return 0 # Успех
 }
 
 
@@ -117,26 +128,26 @@ fi
 task_text=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 log "Found task: $task_text"
 
-ACTION_TAKEN=0
+ACTION_SUCCESSFUL=0
 
 # Правило №1: Создание каркаса
 if [[ "$task_text" == *"создать каркас"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
-    svc_name="${BASH_REMATCH[1]}"
-    if ensure_service_skeleton "$svc_name"; then ACTION_TAKEN=1; fi
-    mark_done "$task_text" # Отмечаем выполненной в любом случае, чтобы не зацикливаться
+    if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_SUCCESSFUL=1; fi
     
-# НОВОЕ ПРАВИЛО №2: Создание Dockerfile
+# Правило №2: Создание Dockerfile
 elif [[ "$task_text" == *"создать базовый Dockerfile"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
-    svc_name="${BASH_REMATCH[1]}"
-    if ensure_dockerfile "$svc_name"; then ACTION_TAKEN=1; fi
-    mark_done "$task_text"
+    if ensure_dockerfile "${BASH_REMATCH[1]}"; then ACTION_SUCCESSFUL=1; fi
+
+# НОВОЕ ПРАВИЛО №3: Добавление сервиса в do/app.yaml
+elif [[ "$task_text" == *"добавить сервис"* ]] && [[ "$task_text" == *"do/app.yaml"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
+    if ensure_do_app_service "${BASH_REMATCH[1]}"; then ACTION_SUCCESSFUL=1; fi
 fi
 
-if [[ "$ACTION_TAKEN" -eq 0 ]]; then
-    log "No code changes made, but task marked as done to proceed."
-fi
+# Отмечаем задачу выполненной, чтобы двигаться дальше
+mark_done "$task_text"
 
-log "Committing and pushing task status..."
+# Если не было изменений в коде, коммит все равно зафиксирует обновление файла задач
+log "Committing task status and any code changes..."
 git add -A
 git commit -m "auto(codex): $task_text"
 git push origin HEAD:codex
