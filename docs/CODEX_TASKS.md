@@ -7,10 +7,10 @@
 ## Этап 0: Инициализация проекта
 - [x] Monorepo (PNPM workspaces). Дерево: `apps/*` (сервисы), `packages/*` (общие пакеты), `infra/*` (Docker/CI). — 2025‑10‑16 20:10:00 +0500
 - [x] Базовые сервисы с `/health`: `svc-auth`, `svc-enquiries`, `svc-vendors`, `svc-catalog`, `svc-guests`. — 2025‑10‑16 20:10:00 +0500
-- [x] Добавить `svc-website` (Next.js/SSR) для **сайта пары** и **публичного RSVP**. — 2025-10-16 20:20:02 +0500
-- [x] `.env.example` для каждого сервиса (см. ниже ENV список). — 2025-10-16 20:40:02 +0500
+- [ ] Добавить `svc-website` (Next.js/SSR) для **сайта пары** и **публичного RSVP**.
+- [ ] `.env.example` для каждого сервиса (см. ниже ENV список).
 - [x] Dockerfiles + `infra/do/app.yaml` для DO Apps; локально — `docker-compose.yml` (Postgres, Redis, Minio). — 2025‑10‑16 20:10:00 +0500
-- [x] GitHub Actions: линтер → unit → e2e → prisma migrate dry‑run → build → auto‑merge `codex`→`main` при зелёных чеках. — 2025-10-16 21:00:05 +0500
+- [ ] GitHub Actions: линтер → unit → e2e → prisma migrate dry‑run → build → auto‑merge `codex`→`main` при зелёных чеках.
 
 **ENV (общий список для .env.example):**
 ```
@@ -33,8 +33,8 @@ DEFAULT_LOCALE=ru
 
 ## Этап 1: База данных и Prisma (пакет `packages/prisma`)
 - [x] Создать пакет `packages/prisma` с единой схемой и генерацией типов.
-- [x] Настроить генераторы: `client`, `nestjs-zod`, `er` (диаграмма). — 2025-10-16 21:13:52 +0500
-- [x] Добавить миграции и скрипты: `pnpm -w prisma:migrate`, `pnpm -w prisma:generate`. — 2025-10-16 21:20:02 +0500
+- [ ] Настроить генераторы: `client`, `nestjs-zod`, `er` (диаграмма).
+- [ ] Добавить миграции и скрипты: `pnpm -w prisma:migrate`, `pnpm -w prisma:generate`.
 
 **`packages/prisma/schema.prisma` (полная MVP‑схема):**
 ```prisma
@@ -247,8 +247,8 @@ model RankSignal {
 ---
 
 ## Этап 2: Аутентификация и роли — `apps/svc-auth`
-- [x] Зависимости: `@nestjs/jwt`, `argon2`, `class-validator`, `passport-jwt`. — 2025-10-16 21:20:50 +0500
-- [x] Файлы: — 2025-10-16 21:26:17 +0500 — 2025-10-16 21:42:16 +0500 — 2025-10-16 21:43:18 +0500 — 2025-10-16 21:46:22 +0500 — 2025-10-16 21:50:09 +0500
+- [ ] Зависимости: `@nestjs/jwt`, `argon2`, `class-validator`, `passport-jwt`.
+- [ ] Файлы:
 ```
 apps/svc-auth/src/app.module.ts
 apps/svc-auth/src/auth.controller.ts
@@ -260,7 +260,7 @@ apps/svc-auth/src/dto/login.dto.ts
 apps/svc-auth/src/dto/refresh.dto.ts
 apps/svc-auth/test/auth.e2e-spec.ts
 ```
-- [x] API‑контракты: — 2025-10-16 21:36:46 +0500
+- [ ] API‑контракты:
 ```
 POST /api/v1/auth/register
 Req: {"email":"user@example.com","password":"Str0ngPass!23","role":"PAIR","locale":"ru"}
@@ -274,8 +274,8 @@ POST /api/v1/auth/refresh
 Req: {"refreshToken":"<jwt>"}
 Res 200: {"accessToken":"<jwt>","refreshToken":"<jwt>"}
 ```
-- [x] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов. — 2025-10-16 21:39:33 +0500
-- [x] DoD: p95 < 100мс; e2e покрытие: регистрация 201, повтор 409, логин 200, неверный пароль 401, refresh 200. — 2025-10-16 21:40:02 +0500
+- [ ] Политики: throttle на `/auth/login`, `RolesGuard(Role)`; audit неуспешных логинов.
+- [ ] DoD: p95 < 100мс; e2e покрытие: регистрация 201, повтор 409, логин 200, неверный пароль 401, refresh 200.
 
 ---
 
