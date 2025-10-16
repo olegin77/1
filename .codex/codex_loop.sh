@@ -37,6 +37,7 @@ ensure_service_skeleton() {
     cat > "$app_dir/package.json" <<EOF
 {"name": "$svc_name", "version": "0.1.0", "scripts": {"build": "tsc", "start": "node dist/main.js"}}
 EOF
+    # ... (остальной код функции без изменений)
     cat > "$app_dir/src/main.ts" <<TS
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
