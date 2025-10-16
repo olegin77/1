@@ -1,0 +1,14 @@
+{
+  "name": "weddingtech-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "infra/*"
+  ],
+  "scripts": {
+    "lint": "echo lint ok",
+    "test": "echo test ok",
+    "build": "echo build ok"
+  }
+}

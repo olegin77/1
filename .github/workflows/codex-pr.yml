@@ -1,5 +1,4 @@
 # .github/workflows/codex-pr.yml
-
 name: 'codex-pr'
 
 on:
@@ -10,6 +9,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: codex-pr     # не плодим параллельные запуски
+  cancel-in-progress: true
+
 jobs:
   pr:
     runs-on: ubuntu-latest
@@ -18,6 +21,7 @@ jobs:
         with:
           fetch-depth: 0
 
+      # На ubuntu-latest gh обычно уже есть; оставим проверку, но без apt-get update, если не нужно
       - name: Ensure GitHub CLI installed
         run: |
           if ! command -v gh >/dev/null 2>&1; then
@@ -38,6 +42,7 @@ jobs:
           fi
 
       - name: Ensure PR codex -> main exists
+        id: ensure
         if: steps.diff.outputs.has_diff == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,11 +58,12 @@ jobs:
           else
             echo "PR #$prnum already exists."
           fi
-          echo "PR_NUMBER=$prnum" >> "$GITHUB_ENV"
+          echo "number=$prnum" >> "$GITHUB_OUTPUT"   # <<< делаем нормальный output шага
 
       - name: Enable auto-merge (squash; best-effort)
-        if: env.PR_NUMBER != ''
+        if: steps.ensure.outputs.number != ''       # <<< надёжнее, чем env.PR_NUMBER
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr merge "$PR_NUMBER" --squash --auto || echo "automerge not enabled; continue"
+          gh pr merge "${{ steps.ensure.outputs.number }}" --squash --auto || echo "automerge not enabled; continue"
+
