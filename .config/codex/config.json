@@ -6,6 +6,16 @@
   "confirm_shell": false,
   "confirm_file_write": false,
   "confirm_commit": false,
-  "no_tty": true
+  "no_tty": true,
+  "sandbox": {
+    "allow_exec": [
+      "codex",
+      "bash",
+      "git",
+      "node",
+      "pnpm",
+      "script"
+    ]
+  }
 
 }

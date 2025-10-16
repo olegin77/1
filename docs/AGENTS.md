@@ -1,6 +1,7 @@
 # Codex Agents Configuration
 
 ## Execution
+agent:
 mode: fully_automatic
 approvals:
   require_approval: false
