@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: BULLETPROOF-V9 (Обучен работе с Prisma Models)
+# ВЕРСИЯ: FINAL-BULLETPROOF-V10
 set -Eeuo pipefail
 
 # --- Глобальная ловушка ошибок ---
@@ -55,62 +55,34 @@ TS
     return 0
 }
 
-# НОВОЕ УМЕНИЕ: Создание/обновление моделей Prisma
 ensure_prisma_model() {
-    local svc_name="$1"
-    local model_info="$2"
-    local schema_path="$PROJECT_ROOT/apps/$svc_name/prisma/schema.prisma"
-    
-    log "ACTION: Ensuring Prisma model in $schema_path"
-    mkdir -p "$(dirname "$schema_path")"
-
-    # Если файла нет, создаем его с базовым заголовком
+    local svc_name="$1"; local model_info="$2"; local schema_path="$PROJECT_ROOT/apps/$svc_name/prisma/schema.prisma"
+    log "ACTION: Ensuring Prisma model in $schema_path"; mkdir -p "$(dirname "$schema_path")"
     if [ ! -f "$schema_path" ]; then
         cat > "$schema_path" <<EOF
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
-}
-
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client { provider = "prisma-client-js" }
 EOF
     fi
-
-    # Извлекаем имя модели (первое слово)
     local model_name; model_name=$(echo "$model_info" | awk '{print $1}')
-    
-    # Если модель с таким именем уже есть, выходим
-    if grep -q "model $model_name" "$schema_path"; then
-        log "Model '$model_name' already exists in $schema_path. Skipping."
-        return 1
-    fi
-    
-    # Добавляем модель в конец файла
-    echo -e "\n$model_info" >> "$schema_path"
-    log "Model '$model_name' added to $schema_path"
-    return 0
+    if grep -q "model $model_name" "$schema_path"; then return 1; fi
+    echo -e "\n$model_info" >> "$schema_path"; log "Model '$model_name' added to $schema_path"; return 0
 }
-
 
 # --- Основной Цикл ---
 cd "$PROJECT_ROOT"
+log ">> === CODEX LOOP START (ver: FINAL-BULLETPROOF-V10) === <<"
 
-log ">> === CODEX LOOP START (ver: BULLETPROOF-V9) === <<"
-
-git fetch origin
-git reset --hard origin/codex
+git fetch origin; git reset --hard origin/codex
 log "STEP 1: Repo synced with origin/codex"
 
-# Ищем первую задачу и весь ее многострочный контекст
-task_block=$(awk '/^- \[ \] / {if (p) exit; p=1} p && /^- \[/ && NR>1 {exit} p' "$TASKS_FILE")
-if [[ -z "$task_block" ]]; then
+# Надежно ищем первую невыполненную задачу
+first_task_line=$(grep -m 1 -- '- \[ \]' "$TASKS_FILE" || echo "")
+if [[ -z "$first_task_line" ]]; then
     log "STEP 2: No open tasks found. Project is complete. Exiting."
     exit 0
 fi
-task_title=$(echo "$task_block" | head -n 1 | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+task_title=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 log "STEP 2: Found task to execute: '$task_title'"
 
 ACTION_PERFORMED=0
@@ -120,12 +92,12 @@ if [[ "$task_title" == *"Создать каркас NestJS-сервиса"* ]] 
     log "STEP 3: Matched rule 'ensure_service_skeleton'"
     if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_PERFORMED=1; fi
 
-# НОВОЕ ПРАВИЛО №2: Работа с моделями Prisma
-elif [[ "$task_title" == *"Prisma"* ]] && [[ "$task_title" =~ \(svc-([a-z-]+)\) ]] && [[ "$task_block" == *"model "* ]]; then
+# Правило №2: Работа с моделями Prisma (многострочный)
+elif [[ "$task_title" == *"Prisma"* ]] && [[ "$task_title" =~ \(svc-([a-z-]+)\) ]]; then
     log "STEP 3: Matched rule 'ensure_prisma_model'"
     svc_name="${BASH_REMATCH[1]}"
-    # Извлекаем блок 'model ... { ... }' из описания задачи
-    model_definition=$(echo "$task_block" | awk '/model/,/}/')
+    # Извлекаем многострочный блок 'model ... { ... }' из файла задач
+    model_definition=$(awk "/- \\[ \\] ${task_title//\*/\\\*}/, /}/" "$TASKS_FILE" | grep -v -- '- \[ \]' | sed 's/^[[:space:]]*//')
     if ensure_prisma_model "$svc_name" "$model_definition"; then ACTION_PERFORMED=1; fi
     
 else

@@ -1,4 +1,5 @@
 # .github/workflows/codex-pr.yml
+# ВЕРСИЯ: FINAL-STABLE
 
 name: 'Codex PR'
 
@@ -6,8 +7,7 @@ on:
   push:
     branches:
       - 'codex'
-    # ❗️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ:
-    # Запускаем воркфлоу, ТОЛЬКО если изменения коснулись чего-либо ВНЕ папки /docs
+    # Игнорируем изменения ТОЛЬКО в документации, чтобы не создавать лишние PR
     paths-ignore:
       - 'docs/**'
 
@@ -20,11 +20,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
+          # Используем только валидные параметры
           branch: 'codex'
-          title: 'auto: codex update'
+          title: 'auto(codex): new updates'
           body: 'Автоматическое обновление кода от Codex-агента.'
           author: 'olegin77 <codex@automation.local>'
-          # Важно: разрешаем пустые коммиты, чтобы PR не закрывался
-          allow_empty_commits: true
