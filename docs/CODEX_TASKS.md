@@ -260,7 +260,7 @@ apps/svc-auth/src/dto/login.dto.ts
 apps/svc-auth/src/dto/refresh.dto.ts
 apps/svc-auth/test/auth.e2e-spec.ts
 ```
-- [ ] API‑контракты:
+- [x] API‑контракты: — 2025-10-16 21:36:46 +0500
 ```
 POST /api/v1/auth/register
 Req: {"email":"user@example.com","password":"Str0ngPass!23","role":"PAIR","locale":"ru"}
