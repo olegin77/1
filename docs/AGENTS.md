@@ -55,4 +55,12 @@ ci:
 telemetry:
   log_commits: true
   log_failures: true
+sandbox:
+    allow_exec:
+      - "codex"
+      - "bash"
+      - "git"
+      - "node"
+      - "pnpm"
+    no_tty: true
 

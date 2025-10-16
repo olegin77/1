@@ -8,6 +8,8 @@
 <!-- codex:confirm_commit=false -->
 <!-- codex:tasks.format=checklist -->
 <!-- codex:tasks.code_block_lang=bash -->
+<!-- codex:no_tty=true -->
+
 
 # CODEX_TASKS
 

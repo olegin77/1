@@ -1,4 +1,11 @@
 {
  "tasksFile": "docs/CODEX_TASKS.md",
-  "model": "gpt-5-codex"
+  "model": "gpt-5-codex",
+    "auto_confirm": true,
+  "require_approval": false,
+  "confirm_shell": false,
+  "confirm_file_write": false,
+  "confirm_commit": false,
+  "no_tty": true
+
 }
