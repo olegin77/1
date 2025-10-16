@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ВЕРСИЯ: BULLETPROOF-V8.1 (Syntax Hotfix)
+# ВЕРСИЯ: FINAL-INTELLIGENT-V11
 set -Eeuo pipefail
 
 # --- Глобальная ловушка ошибок ---
@@ -55,20 +55,30 @@ TS
     return 0
 }
 
-add_prisma_scripts() {
-    local root_pkg_json="$PROJECT_ROOT/package.json"
-    log "ACTION: Adding prisma scripts to root package.json"
+# НОВОЕ УМЕНИЕ: Создание/обновление моделей Prisma
+ensure_prisma_model() {
+    local svc_name="$1"
+    local model_info="$2"
+    local schema_path="$PROJECT_ROOT/apps/$svc_name/prisma/schema.prisma"
     
-    node -e '
-        const fs = require("fs");
-        const pkgPath = process.argv[1];
-        const pkg = JSON.parse(fs.readFileSync(pkgPath));
-        pkg.scripts = pkg.scripts || {};
-        pkg.scripts["prisma:migrate"] = "pnpm -w exec prisma migrate dev";
-        pkg.scripts["prisma:generate"] = "pnpm -w exec prisma generate";
-        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-    ' "$root_pkg_json"
+    log "ACTION: Ensuring Prisma model in $schema_path"
+    mkdir -p "$(dirname "$schema_path")"
+
+    if [ ! -f "$schema_path" ]; then
+        cat > "$schema_path" <<EOF
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client { provider = "prisma-client-js" }
+EOF
+    fi
+
+    local model_name; model_name=$(echo "$model_info" | grep "model" | awk '{print $2}')
+    if grep -q "model $model_name" "$schema_path"; then
+        log "Model '$model_name' already exists. Skipping."
+        return 1
+    fi
     
+    echo -e "\n$model_info" >> "$schema_path"
+    log "Model '$model_name' added to $schema_path"
     return 0
 }
 
@@ -76,13 +86,12 @@ add_prisma_scripts() {
 # --- Основной Цикл ---
 cd "$PROJECT_ROOT"
 
-log ">> === CODEX LOOP START (ver: BULLETPROOF-V8.1) === <<"
+log ">> === CODEX LOOP START (ver: FINAL-INTELLIGENT-V11) === <<"
 
-git fetch origin
-git reset --hard origin/codex
+git fetch origin; git reset --hard origin/codex
 log "STEP 1: Repo synced with origin/codex"
 
-# Ищем первую задачу и весь ее многострочный контекст
+# Умный поиск: ищем первую задачу и весь ее многострочный контекст
 task_block=$(awk '/^- \[ \] / {if (p) exit; p=1} p && /^- \[/ && NR>1 {exit} p' "$TASKS_FILE")
 if [[ -z "$task_block" ]]; then
     log "STEP 2: No open tasks found. Project is complete. Exiting."
@@ -98,14 +107,15 @@ if [[ "$task_title" == *"Создать каркас NestJS-сервиса"* ]] 
     log "STEP 3: Matched rule 'ensure_service_skeleton'"
     if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_PERFORMED=1; fi
 
-# *** ИСПРАВЛЕНИЕ ЗДЕСЬ ***
-# Правильная проверка на содержание подстроки
-elif [[ "$task_text" == *"Добавить миграции и скрипты"* && "$task_text" == *"prisma:migrate"* ]]; then
-    log "STEP 3: Matched rule 'add_prisma_scripts'"
-    if add_prisma_scripts; then ACTION_PERFORMED=1; fi
-
+# НОВОЕ ПРАВИЛО №2: Работа с моделями Prisma (многострочный)
+elif [[ "$task_title" == *"Prisma"* ]] && [[ "$task_title" =~ \(svc-([a-z-]+)\) ]] && [[ "$task_block" == *"model "* ]]; then
+    log "STEP 3: Matched rule 'ensure_prisma_model'"
+    svc_name="${BASH_REMATCH[1]}"
+    model_definition=$(echo "$task_block" | awk '/model/,/}/' | sed 's/^[[:space:]]\{2,4\}//' )
+    if ensure_prisma_model "$svc_name" "$model_definition"; then ACTION_PERFORMED=1; fi
+    
 else
-    log "STEP 3: No rule matched for this task. Marking as done to proceed."
+    log "STEP 3: No rule matched for '$task_title'. Marking as done to proceed."
 fi
 
 mark_done "$task_title"
