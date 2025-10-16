@@ -8,7 +8,7 @@
 - [x] Monorepo (PNPM workspaces). Дерево: `apps/*` (сервисы), `packages/*` (общие пакеты), `infra/*` (Docker/CI). — 2025‑10‑16 20:10:00 +0500
 - [x] Базовые сервисы с `/health`: `svc-auth`, `svc-enquiries`, `svc-vendors`, `svc-catalog`, `svc-guests`. — 2025‑10‑16 20:10:00 +0500
 - [x] Добавить `svc-website` (Next.js/SSR) для **сайта пары** и **публичного RSVP**. — 2025-10-16 21:54:09 +0500
-- [ ] `.env.example` для каждого сервиса (см. ниже ENV список).
+- [x] `.env.example` для каждого сервиса (см. ниже ENV список). — 2025-10-16 21:57:06 +0500
 - [x] Dockerfiles + `infra/do/app.yaml` для DO Apps; локально — `docker-compose.yml` (Postgres, Redis, Minio). — 2025‑10‑16 20:10:00 +0500
 - [ ] GitHub Actions: линтер → unit → e2e → prisma migrate dry‑run → build → auto‑merge `codex`→`main` при зелёных чеках.
 
