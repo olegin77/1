@@ -21,7 +21,7 @@ agent:
     commit_strategy: "one_commit_per_task"
     push: true
   sandbox:
-    writable: true                # <— ключевая строка, чтобы не было read-only
+    writable: true
     no_tty: true
     allow_exec: ["codex","bash","git","node","pnpm","script"]
 
