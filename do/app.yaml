@@ -38,3 +38,11 @@ services:
     source_dir: /apps/svc-auth
   health_check:
     http_path: /health
+
+- name: svc-guests
+  git:
+    repo: ${repo.name}
+    branch: ${repo.branch}
+    source_dir: /apps/svc-guests
+  health_check:
+    http_path: /health
