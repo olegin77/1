@@ -82,18 +82,19 @@ git fetch origin
 git reset --hard origin/codex
 log "STEP 1: Repo synced with origin/codex"
 
-first_task_line=$(grep -m 1 -- '- \[ \]' "$TASKS_FILE" || echo "")
-if [[ -z "$first_task_line" ]]; then
+# Ищем первую задачу и весь ее многострочный контекст
+task_block=$(awk '/^- \[ \] / {if (p) exit; p=1} p && /^- \[/ && NR>1 {exit} p' "$TASKS_FILE")
+if [[ -z "$task_block" ]]; then
     log "STEP 2: No open tasks found. Project is complete. Exiting."
     exit 0
 fi
-task_text=$(echo "$first_task_line" | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-log "STEP 2: Found task to execute: '$task_text'"
+task_title=$(echo "$task_block" | head -n 1 | sed -e 's/^- \[ \] //' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+log "STEP 2: Found task to execute: '$task_title'"
 
 ACTION_PERFORMED=0
 
 # Правило №1: Создание каркаса
-if [[ "$task_text" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_text" =~ (svc-[a-z-]+) ]]; then
+if [[ "$task_title" == *"Создать каркас NestJS-сервиса"* ]] && [[ "$task_title" =~ (svc-[a-z-]+) ]]; then
     log "STEP 3: Matched rule 'ensure_service_skeleton'"
     if ensure_service_skeleton "${BASH_REMATCH[1]}"; then ACTION_PERFORMED=1; fi
 
@@ -107,11 +108,11 @@ else
     log "STEP 3: No rule matched for this task. Marking as done to proceed."
 fi
 
-mark_done "$task_text"
+mark_done "$task_title"
 
 log "STEP 4: Committing changes to Git..."
 git add -A
-git commit -m "auto(codex): $task_text"
+git commit -m "auto(codex): $task_title"
 git push origin HEAD:codex
 log "STEP 5: Push to GitHub successful."
 
