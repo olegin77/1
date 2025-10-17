@@ -401,7 +401,7 @@ TS
     git add apps/svc-enquiries/src/offers/index.ts
     ```
 
-- [ ] T-0053 | Ранжирование каталога (quality score)
+- [x] T-0053 | Ранжирование каталога (quality score)
   - depends: [T-0050]
   - apply:
     ```bash
