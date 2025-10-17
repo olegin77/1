@@ -2531,7 +2531,7 @@ TS
 
 ## ЭТАП 138. Стресс-профили k6 (каталог/поиск)
 
-- [ ] T-1380 | k6 search/stress
+- [x] T-1380 | k6 search/stress
   - depends: [T-0150]
   - apply:
     ```bash
