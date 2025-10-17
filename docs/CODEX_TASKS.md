@@ -256,7 +256,7 @@ CSS
     git add packages/ui/src/tokens.css
     ```
 
-- [ ] T-0021 | Базовые компоненты (Button, Card, Input)
+- [x] T-0021 | Базовые компоненты (Button, Card, Input)
   - depends: [T-0020]
   - apply:
     ```bash
@@ -3640,4 +3640,3 @@ jobs:
 YML
     git add .github/workflows/lighthouse.yml
     ```
-
