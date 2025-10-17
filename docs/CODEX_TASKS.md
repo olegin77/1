@@ -596,7 +596,7 @@ TS
     git add apps/svc-website/scripts/generate-sitemap.js
     ```
 
-- [ ] T-0131 | OG-теги и мета-компонент
+- [x] T-0131 | OG-теги и мета-компонент
   - depends: [T-0021]
   - apply:
     ```bash
