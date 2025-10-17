@@ -2235,7 +2235,7 @@ TS
 
 ## ЭТАП 117. Ограничение скоростей по IP/аккаунту
 
-- [ ] T-1170 | Middleware rate-limit
+- [x] T-1170 | Middleware rate-limit
   - depends: [T-1080]
   - apply:
     ```bash
