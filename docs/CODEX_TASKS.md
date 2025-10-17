@@ -2796,7 +2796,7 @@ TS
 
 ## ЭТАП 154. Витрина идей с фильтрами (semantic+tags)
 
-- [ ] T-1540 | Интеграция semantic в «inspo»
+- [x] T-1540 | Интеграция semantic в «inspo»
   - depends: [T-1410, T-0700]
   - apply:
     ```bash
