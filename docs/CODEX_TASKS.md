@@ -2447,7 +2447,7 @@ TS
 
 ## ЭТАП 132. Тонкая настройка robots.txt
 
-- [ ] T-1320 | robots.txt
+- [x] T-1320 | robots.txt
   - depends: [T-0130]
   - apply:
     ```bash
