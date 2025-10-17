@@ -2265,7 +2265,7 @@ TS
 
 ## ЭТАП 119. SLA/OLA политики (docs)
 
-- [ ] T-1190 | Документы SLA/OLA
+- [x] T-1190 | Документы SLA/OLA
   - depends: []
   - apply:
     ```bash
