@@ -283,7 +283,7 @@ TSX
     git add apps/website-mvp/src/Dashboard.tsx
     ```
 
-- [ ] T-0023 | Гайд по дизайну (mdx)
+- [x] T-0023 | Гайд по дизайну (mdx)
   - depends: [T-0021]
   - apply:
     ```bash
