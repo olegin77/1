@@ -2966,7 +2966,7 @@ MDX
 
 ## ЭТАП 166. Календарь поставщика: импорты Google (stub)
 
-- [ ] T-1660 | Заглушка Google Calendar импортера
+- [x] T-1660 | Заглушка Google Calendar импортера
   - depends: [T-0260]
   - apply:
     ```bash
