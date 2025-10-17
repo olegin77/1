@@ -135,7 +135,7 @@ YML
     git add .github/workflows/ci.yml
     ```
 
-- [ ] T-0006 | PR guard: проверка наличия docs/CODEX_TASKS.md
+- [x] T-0006 | PR guard: проверка наличия docs/CODEX_TASKS.md
   - depends: [T-0005]
   - apply:
     ```bash
