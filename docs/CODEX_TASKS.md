@@ -2058,7 +2058,7 @@ TS
 
 ## ЭТАП 107. GraphQL-шлюз
 
-- [ ] T-1070 | Gateway (скелет)
+- [x] T-1070 | Gateway (скелет)
   - depends: [T-0004]
   - apply:
     ```bash
