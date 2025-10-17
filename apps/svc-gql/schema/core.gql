@@ -1,0 +1,3 @@
+type Vendor{ id:ID! title:String city:String rating:Float }
+type Enquiry{ id:ID! status:String vendorId:String }
+type Invoice{ id:ID! total:Int ccy:String status:String }

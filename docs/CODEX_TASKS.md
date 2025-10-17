@@ -2882,7 +2882,7 @@ TS
 
 ## ЭТАП 160. Схемы для GraphQL (раскрытие моделей)
 
-- [ ] T-1600 | Типы Vendor/Enquiry/Invoice
+- [x] T-1600 | Типы Vendor/Enquiry/Invoice
   - depends: [T-1070, T-0011]
   - apply:
     ```bash
