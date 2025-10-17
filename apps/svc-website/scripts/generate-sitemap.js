@@ -1,0 +1,1 @@
+console.log('sitemap.xml');
