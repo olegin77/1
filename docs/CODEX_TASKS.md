@@ -2044,7 +2044,7 @@ TS
     git add apps/svc-payments/providers/payme.ts
     ```
 
-- [ ] T-1062 | Click провайдер
+- [x] T-1062 | Click провайдер
   - depends: [T-0112]
   - apply:
     ```bash
