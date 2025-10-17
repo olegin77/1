@@ -46,7 +46,7 @@ JSON
     git add -A
     ```
 
-- [ ] T-0002 | Шаблон `.env.example`
+- [x] T-0002 | Шаблон `.env.example`
   - depends: [T-0001]
   - apply:
     ```bash

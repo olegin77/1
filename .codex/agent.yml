@@ -23,4 +23,10 @@ agent:
   sandbox:
     writable: true
     no_tty: true
-    allow_exec: ["codex","bash","git","node","pnpm","script"]
+    allow_exec:
+      - codex
+      - bash
+      - git
+      - node
+      - pnpm
+      - script
