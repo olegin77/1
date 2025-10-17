@@ -503,7 +503,7 @@ TS
 
 ## ЭТАП 10. I18n СНГ (RU/UZ/KK/EN)
 
-- [ ] T-0100 | Пакет `@wt/i18n` (RU, UZ, EN, KK)
+- [x] T-0100 | Пакет `@wt/i18n` (RU, UZ, EN, KK)
   - depends: [T-0001]
   - apply:
     ```bash
