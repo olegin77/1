@@ -3154,7 +3154,7 @@ TS
 
 ## ЭТАП 180. Финальный пуш уровня 3
 
-- [ ] T-1800 | Commit/push «Level 3»
+- [x] T-1800 | Commit/push «Level 3»
   - depends: [T-0005]
   - apply:
     ```bash
