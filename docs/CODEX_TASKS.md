@@ -481,7 +481,7 @@ TS
 
 ## ЭТАП 9. B2B-аналитика, события и сигналы
 
-- [ ] T-0090 | svc-analytics скелет
+- [x] T-0090 | svc-analytics скелет
   - depends: [T-0004]
   - apply:
     ```bash
