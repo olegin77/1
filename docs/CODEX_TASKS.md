@@ -2023,7 +2023,7 @@ TS
 
 ## ЭТАП 106. Доп. платёжные провайдеры (UzPay/Payme/Click)
 
-- [ ] T-1060 | UzPay провайдер
+- [x] T-1060 | UzPay провайдер
   - depends: [T-0112]
   - apply:
     ```bash
