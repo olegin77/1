@@ -2134,7 +2134,7 @@ TS
     git add docs/seo/clusters.ts
     ```
 
-- [ ] T-1111 | Генерация mdx из кластеров
+- [x] T-1111 | Генерация mdx из кластеров
   - depends: [T-1110]
   - apply:
     ```bash
