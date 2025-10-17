@@ -530,7 +530,7 @@ TS
     git add apps/svc-payments/providers/uzcard.ts
     ```
 
-- [ ] T-0111 | Провайдер Humo (инициализация API)
+- [x] T-0111 | Провайдер Humo (инициализация API)
   - depends: [T-0002]
   - apply:
     ```bash
