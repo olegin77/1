@@ -2175,7 +2175,7 @@ JS
     git add packages/i18n/kk.json packages/i18n/kg.json packages/i18n/az.json
     ```
 
-- [ ] T-1131 | Форматы адресов/телефонов
+- [x] T-1131 | Форматы адресов/телефонов
   - depends: [T-0580]
   - apply:
     ```bash
