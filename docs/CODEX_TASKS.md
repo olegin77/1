@@ -392,7 +392,7 @@ TS
     git add apps/svc-vendors/src/availability/index.ts
     ```
 
-- [ ] T-0052 | Запросы/квоты/оферы (enquiries+offers)
+- [x] T-0052 | Запросы/квоты/оферы (enquiries+offers)
   - depends: [T-0011]
   - apply:
     ```bash
