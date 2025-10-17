@@ -383,7 +383,7 @@ TS
     git add apps/svc-catalog/src/search/index.ts
     ```
 
-- [ ] T-0051 | Календарь доступности (availability slots)
+- [x] T-0051 | Календарь доступности (availability slots)
   - depends: [T-0011]
   - apply:
     ```bash
