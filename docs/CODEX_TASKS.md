@@ -574,7 +574,7 @@ TS
     git add packages/mailer/*
     ```
 
-- [ ] T-0121 | SMS-шлюз абстракция
+- [x] T-0121 | SMS-шлюз абстракция
   - depends: [T-0002]
   - apply:
     ```bash
