@@ -1227,7 +1227,7 @@ TS
 
 ## ЭТАП 51. Поиск по сайту (full-text, подсказки)
 
-- [ ] T-0510 | Пакет `@wt/search` (in-repo)
+- [x] T-0510 | Пакет `@wt/search` (in-repo)
   - depends: [T-0050]
   - apply:
     ```bash
