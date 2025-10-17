@@ -425,7 +425,7 @@ TS
     git add apps/svc-website/pages/w/[slug]/index.js
     ```
 
-- [ ] T-0061 | Публичный RSVP (/w/[slug]/rsvp)
+- [x] T-0061 | Публичный RSVP (/w/[slug]/rsvp)
   - depends: [T-0060]
   - apply:
     ```bash
