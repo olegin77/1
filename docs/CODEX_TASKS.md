@@ -1081,7 +1081,7 @@ JS
 
 ## ЭТАП 43. Hardening
 
-- [ ] T-0430 | Security headers
+- [x] T-0430 | Security headers
   - depends: [T-0004]
   - apply:
     ```bash
