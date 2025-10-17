@@ -95,7 +95,7 @@ YML
     git add infra/local/docker-compose.yml
     ```
 
-- [ ] T-0004 | Базовые сервисы `/health` (скелеты)
+- [x] T-0004 | Базовые сервисы `/health` (скелеты)
   - depends: [T-0001]
   - apply:
     ```bash
