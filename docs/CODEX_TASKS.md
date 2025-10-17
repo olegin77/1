@@ -352,7 +352,7 @@ TS
     git add apps/svc-guests/src/seating/index.ts
     ```
 
-- [ ] T-0042 | Бюджет план/факт (категории)
+- [x] T-0042 | Бюджет план/факт (категории)
   - depends: [T-0011]
   - apply:
     ```bash
