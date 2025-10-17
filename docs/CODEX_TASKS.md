@@ -433,7 +433,7 @@ TS
     git add apps/svc-website/pages/w/[slug]/rsvp.js
     ```
 
-- [ ] T-0062 | QR-код приглашения (генерация)
+- [x] T-0062 | QR-код приглашения (генерация)
   - depends: [T-0061]
   - apply:
     ```bash
