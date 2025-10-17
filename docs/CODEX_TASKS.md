@@ -244,7 +244,7 @@ PRISMA
 
 ## ЭТАП 2. Дизайн-система и UI
 
-- [ ] T-0020 | Пакет `@wt/ui`: токены темы, Tailwind пресет
+- [x] T-0020 | Пакет `@wt/ui`: токены темы, Tailwind пресет
   - depends: [T-0001]
   - apply:
     ```bash
@@ -2557,7 +2557,7 @@ JS
 
 ## ЭТАП 140. Финальный пуш уровня 2
 
-- [ ] T-1400 | Commit/push «Level 2»
+- [x] T-1400 | Commit/push «Level 2»
   - depends: [T-0005]
   - apply:
     ```bash
@@ -2565,3 +2565,1079 @@ JS
     git commit -m "Codex: Level-2 features 101–140 (ML, payments+, GQL, rate-limits, SEO clusters, regional, accounting)"
     git push origin codex || true
     ```
+      
+---
+
+## ЭТАП 141. Семантический поиск и векторный индекс
+
+- [ ] T-1410 | Пакет `@wt/semantic` (скелет векторного индекса)
+  - depends: [T-0510]
+  - apply:
+    ```bash
+    mkdir -p packages/semantic
+    cat > packages/semantic/index.ts <<'TS'
+const idx=new Map<string,number[]>();
+export const embed=(t:string)=>Array.from({length:16},(_,i)=>((t.charCodeAt(i%t.length)||0)%17)/17);
+export function insert(id:string, text:string){ idx.set(id, embed(text)); }
+export function search(q:string, k=5){
+  const qe=embed(q); const sc=(a:number[],b:number[])=>a.reduce((s,v,i)=>s+v*(b[i]||0),0);
+  return [...idx.entries()].map(([id,v])=>({id,score:sc(qe,v)})).sort((a,b)=>b.score-a.score).slice(0,k);
+}
+TS
+    git add packages/semantic/index.ts
+    ```
+
+- [ ] T-1411 | Индексация поставщиков в семантический индекс
+  - depends: [T-1410, T-0050]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/semantic
+    cat > apps/svc-catalog/src/semantic/index-vendors.ts <<'TS'
+import {insert} from "@wt/semantic"; export function reindex(vendors:any[]){ vendors.forEach(v=>insert(v.id, `${v.title} ${v.city} ${v.type}`)); }
+TS
+    git add apps/svc-catalog/src/semantic/index-vendors.ts
+    ```
+
+---
+
+## ЭТАП 142. Feature Store для ML
+
+- [ ] T-1420 | Пакет `@wt/features` (фичи и схемы)
+  - depends: [T-1011]
+  - apply:
+    ```bash
+    mkdir -p packages/features
+    cat > packages/features/index.ts <<'TS'
+export type VendorFeatures={conv:number;rating:number;profile:number;calendar:number};
+export const registry={VendorFeatures:['conv','rating','profile','calendar']};
+TS
+    git add packages/features/index.ts
+    ```
+
+- [ ] T-1421 | Экспорт фич в snapshot
+  - depends: [T-1420]
+  - apply:
+    ```bash
+    mkdir -p infra/feast/snapshots
+    cat > infra/feast/export.ts <<'TS'
+import {writeFileSync} from 'fs';
+export function dump(name:string, rows:any[]){ writeFileSync(`infra/feast/snapshots/${name}.json`, JSON.stringify(rows,null,2)); }
+TS
+    git add infra/feast/export.ts
+    ```
+
+---
+
+## ЭТАП 143. Online-learning заглушка
+
+- [ ] T-1430 | Обновление весов по событиям
+  - depends: [T-0370, T-1010]
+  - apply:
+    ```bash
+    mkdir -p packages/mlrank/online
+    cat > packages/mlrank/online/update.ts <<'TS'
+let w={conv:0.55,rating:0.2,profile:0.2,calendar:0.05};
+export function update(event:{type:'click'|'book',delta:number}){ if(event.type==='book') w.conv+=0.001*event.delta; }
+export function weights(){ return w; }
+TS
+    git add packages/mlrank/online/update.ts
+    ```
+
+---
+
+## ЭТАП 144. Графовый анти-фрод
+
+- [ ] T-1440 | Граф связей и эвристики
+  - depends: [T-1150, T-1090]
+  - apply:
+    ```bash
+    mkdir -p packages/antifraud/graph
+    cat > packages/antifraud/graph/index.ts <<'TS'
+import {edges,link} from "../../graph"; export {link};
+export const suspiciousCluster=(id:string)=> (edges.get(id)||[]).length>10;
+TS
+    git add packages/antifraud/graph/index.ts
+    ```
+
+---
+
+## ЭТАП 145. Фото-CDN с вариантами (thumb/preview/full)
+
+- [ ] T-1450 | Варианты изображений (описание)
+  - depends: [T-0270, T-0520]
+  - apply:
+    ```bash
+    mkdir -p packages/media/variants
+    cat > packages/media/variants/index.ts <<'TS'
+export const variants=[{name:'thumb',w:240},{name:'preview',w:960},{name:'full',w:2048}];
+TS
+    git add packages/media/variants/index.ts
+    ```
+
+---
+
+## ЭТАП 146. Multi-region deploy (док)
+
+- [ ] T-1460 | План регионального развертывания
+  - depends: []
+  - apply:
+    ```bash
+    mkdir -p docs/ops/regions
+    cat > docs/ops/regions/plan.md <<'MD'
+# Multi-region
+- Primary: eu-central; DR: eu-west. Read replicas для catalog/auth.
+MD
+    git add docs/ops/regions/plan.md
+    ```
+
+---
+
+## ЭТАП 147. DR/Backup-восстановление (плейбуки)
+
+- [ ] T-1470 | Плейбук восстановления
+  - depends: [T-0380]
+  - apply:
+    ```bash
+    cat > docs/ops/dr-runbook.md <<'MD'
+# DR Runbook
+Шаги восстановления БД из snapshot, прогрев индексов, проверка /health.
+MD
+    git add docs/ops/dr-runbook.md
+    ```
+
+---
+
+## ЭТАП 148. Canary-релизы
+
+- [ ] T-1480 | Стратегия canary (docs)
+  - depends: [T-0005]
+  - apply:
+    ```bash
+    cat > docs/ops/canary.md <<'MD'
+# Canary
+1% трафика → 10% → 50% → 100% при стабильных метриках.
+MD
+    git add docs/ops/canary.md
+    ```
+
+---
+
+## ЭТАП 149. SLA-алерты и SLO
+
+- [ ] T-1490 | Каталог SLO
+  - depends: [T-1190]
+  - apply:
+    ```bash
+    mkdir -p docs/ops/slo
+    cat > docs/ops/slo/catalog.md <<'MD'
+# SLO
+- LCP≤2.5s (p75), API error rate ≤0.5%.
+MD
+    git add docs/ops/slo/catalog.md
+    ```
+
+---
+
+## ЭТАП 150. Модель churn/retention (заготовка)
+
+- [ ] T-1500 | Признаки и эвристика удержания
+  - depends: [T-0370, T-1420]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/churn
+    cat > apps/svc-analytics/src/churn/index.ts <<'TS'
+export function churnScore(u:{daysInactive:number,enquiries:number}){ return Math.min(1, (u.daysInactive/30) - 0.1*u.enquiries); }
+TS
+    git add apps/svc-analytics/src/churn/index.ts
+    ```
+
+---
+
+## ЭТАП 151. Pay-by-Link
+
+- [ ] T-1510 | Генератор ссылок на оплату
+  - depends: [T-0290, T-0112]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/paylink
+    cat > apps/svc-payments/src/paylink/index.ts <<'TS'
+export const payLink=(invoiceId:string)=>`/pay/${invoiceId}`;
+TS
+    git add apps/svc-payments/src/paylink/index.ts
+    ```
+
+---
+
+## ЭТАП 152. Webhooks подписчиков (B2B)
+
+- [ ] T-1520 | Подписки на события (скелет)
+  - depends: [T-0091]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/webhooks
+    echo "export const subscribe=()=>true;" > apps/svc-analytics/src/webhooks/index.ts
+    git add apps/svc-analytics/src/webhooks/index.ts
+    ```
+
+---
+
+## ЭТАП 153. Интеграция Telegram-ботов (уведомления)
+
+- [ ] T-1530 | Заглушка отправки в Telegram
+  - depends: [T-0720]
+  - apply:
+    ```bash
+    mkdir -p packages/telegram
+    echo "export const notify=(chatId:string,msg:string)=>({chatId,msg});" > packages/telegram/index.ts
+    git add packages/telegram/index.ts
+    ```
+
+---
+
+## ЭТАП 154. Витрина идей с фильтрами (semantic+tags)
+
+- [ ] T-1540 | Интеграция semantic в «inspo»
+  - depends: [T-1410, T-0700]
+  - apply:
+    ```bash
+    mkdir -p docs/inspo/index
+    echo "# Каталог идей (семантическая выдача)" > docs/inspo/index/README.md
+    git add docs/inspo/index/README.md
+    ```
+
+---
+
+## ЭТАП 155. Контроль дубликатов поставщиков
+
+- [ ] T-1550 | Эвристика duplicate-detector
+  - depends: [T-0530]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-vendors/src/dupe
+    cat > apps/svc-vendors/src/dupe/index.ts <<'TS'
+export const isDupe=(a:any,b:any)=> (a.phone && a.phone===b.phone) || (a.title===b.title && a.city===b.city);
+TS
+    git add apps/svc-vendors/src/dupe/index.ts
+    ```
+
+---
+
+## ЭТАП 156. Мультивитрина для франшизы (subdomain mapping)
+
+- [ ] T-1560 | Маппинг субдоменов
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/config
+    cat > apps/svc-website/config/tenants.json <<'JSON'
+{"default":"main","tashkent":"uz-tas","almaty":"kz-alm"}
+JSON
+    git add apps/svc-website/config/tenants.json
+    ```
+
+---
+
+## ЭТАП 157. Семантический поиск по FAQ/Help
+
+- [ ] T-1570 | Индексация help-центра
+  - depends: [T-1410, T-1230]
+  - apply:
+    ```bash
+    mkdir -p docs/help/search
+    echo "export const indexed=true;" > docs/help/search/index.ts
+    git add docs/help/search/index.ts
+    ```
+
+---
+
+## ЭТАП 158. Нормализация телефонов/форматов
+
+- [ ] T-1580 | Нормализатор телефонов
+  - depends: [T-1131]
+  - apply:
+    ```bash
+    mkdir -p packages/geo/phone
+    cat > packages/geo/phone/index.ts <<'TS'
+export const normalize=(p:string)=>p.replace(/[^\d+]/g,'');
+TS
+    git add packages/geo/phone/index.ts
+    ```
+
+---
+
+## ЭТАП 159. Сегменты ретеншна (RFM-подобно)
+
+- [ ] T-1590 | Сегментация RFM
+  - depends: [T-0370]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/segmentation
+    cat > apps/svc-analytics/src/segmentation/rfm.ts <<'TS'
+export const rfm=(u:{recency:number,frequency:number,monetary:number})=>({R:u.recency,F:u.frequency,M:u.monetary});
+TS
+    git add apps/svc-analytics/src/segmentation/rfm.ts
+    ```
+
+---
+
+## ЭТАП 160. Схемы для GraphQL (раскрытие моделей)
+
+- [ ] T-1600 | Типы Vendor/Enquiry/Invoice
+  - depends: [T-1070, T-0011]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-gql/schema
+    cat > apps/svc-gql/schema/core.gql <<'GQL'
+type Vendor{ id:ID! title:String city:String rating:Float }
+type Enquiry{ id:ID! status:String vendorId:String }
+type Invoice{ id:ID! total:Int ccy:String status:String }
+GQL
+    git add apps/svc-gql/schema/core.gql
+    ```
+
+---
+
+## ЭТАП 161. Default-данные для витрины (seed)
+
+- [ ] T-1610 | Дополнение сидера
+  - depends: [T-0200]
+  - apply:
+    ```bash
+    echo "console.log('seed vendors demo');" >> apps/seeder/index.js
+    git add apps/seeder/index.js
+    ```
+
+---
+
+## ЭТАП 162. Мини-ETL для аналитики
+
+- [ ] T-1620 | Экспорт событий в CSV
+  - depends: [T-0090]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-analytics/src/etl
+    echo "export const toCsv=()=> 'ts,event';" > apps/svc-analytics/src/etl/to-csv.ts
+    git add apps/svc-analytics/src/etl/to-csv.ts
+    ```
+
+---
+
+## ЭТАП 163. Хранилище фич как артефактов
+
+- [ ] T-1630 | Приземление в /infra/features
+  - depends: [T-1421]
+  - apply:
+    ```bash
+    mkdir -p infra/features
+    echo "{}" > infra/features/.keep
+    git add infra/features/.keep
+    ```
+
+---
+
+## ЭТАП 164. Пресеты для конверсии карточки
+
+- [ ] T-1640 | CTA-варианты (A/B)
+  - depends: [T-0410]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/experiments
+    echo "export const cta=['Запросить предложение','Связаться','Забронировать дату'];" > apps/svc-catalog/src/experiments/cta.ts
+    git add apps/svc-catalog/src/experiments/cta.ts
+    ```
+
+---
+
+## ЭТАП 165. Контент-генерация для SEO кластеров (скрипт)
+
+- [ ] T-1650 | Генерация mdx по темплейту
+  - depends: [T-1111]
+  - apply:
+    ```bash
+    mkdir -p docs/seo/templates
+    cat > docs/seo/templates/basic.mdx <<'MDX'
+# {{title}}
+Краткое описание и чек-лист.
+MDX
+    git add docs/seo/templates/basic.mdx
+    ```
+
+---
+
+## ЭТАП 166. Календарь поставщика: импорты Google (stub)
+
+- [ ] T-1660 | Заглушка Google Calendar импортера
+  - depends: [T-0260]
+  - apply:
+    ```bash
+    mkdir -p packages/ical/google
+    echo "export const googleImport=()=>[];" > packages/ical/google/index.ts
+    git add packages/ical/google/index.ts
+    ```
+
+---
+
+## ЭТАП 167. Пакетные сделки (bundle-варианты)
+
+- [ ] T-1670 | Расширение bundles
+  - depends: [T-0600]
+  - apply:
+    ```bash
+    echo "export const bundlePresets=['economy','standard','lux'];" > apps/svc-catalog/src/bundles/presets.ts
+    git add apps/svc-catalog/src/bundles/presets.ts
+    ```
+
+---
+
+## ЭТАП 168. Умные подсказки бюджета (эвристика)
+
+- [ ] T-1680 | Рекомендованный бюджет по городу/гостям
+  - depends: [T-0540, T-0580]
+  - apply:
+    ```bash
+    mkdir -p packages/format/reco
+    cat > packages/format/reco/budget.ts <<'TS'
+export const recommend=(city:string, guests:number)=> Math.round((guests*30) * (city==='Tashkent'?1.3:1.0));
+TS
+    git add packages/format/reco/budget.ts
+    ```
+
+---
+
+## ЭТАП 169. Экспорт отчётов поставщику (PDF stub)
+
+- [ ] T-1690 | PDF отчёт для вендора
+  - depends: [T-0820]
+  - apply:
+    ```bash
+    echo "export const vendorPdf=1;" > apps/svc-analytics/src/vendor/pdf.ts
+    git add apps/svc-analytics/src/vendor/pdf.ts
+    ```
+
+---
+
+## ЭТАП 170. Конструктор лендингов (mdx-блоки)
+
+- [ ] T-1700 | Библиотека mdx-блоков
+  - depends: [T-0180]
+  - apply:
+    ```bash
+    mkdir -p docs/landing/blocks
+    echo "<section>Hero</section>" > docs/landing/blocks/hero.mdx
+    git add docs/landing/blocks/hero.mdx
+    ```
+
+---
+
+## ЭТАП 171. Экспорт RSVP в QR-бейджи (stub)
+
+- [ ] T-1710 | Генерация бейджей
+  - depends: [T-0062, T-0061]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/export
+    echo "export const badges=()=>[];" > apps/svc-website/export/badges.ts
+    git add apps/svc-website/export/badges.ts
+    ```
+
+---
+
+## ЭТАП 172. Система жалоб/репортов
+
+- [ ] T-1720 | Репорты на профиль/отзыв
+  - depends: [T-0070, T-0250]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/reports
+    echo "export const report=()=>true;" > apps/svc-enquiries/src/reports/index.ts
+    git add apps/svc-enquiries/src/reports/index.ts
+    ```
+
+---
+
+## ЭТАП 173. Сервис «Doorman» (защита эндпоинтов)
+
+- [ ] T-1730 | Блок-лист IP/UA
+  - depends: [T-0430, T-1080]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-doorman/src
+    cat > apps/svc-doorman/src/index.ts <<'TS'
+export const blockedUA=['curl','bot']; export const blockedIP=['0.0.0.0'];
+TS
+    git add apps/svc-doorman/src/index.ts
+    ```
+
+---
+
+## ЭТАП 174. Умные подсказки текстов (templates)
+
+- [ ] T-1740 | Шаблоны сообщений заявок
+  - depends: [T-0340]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/templates
+    echo "export const msgTemplates=['Здравствуйте! Интересует дата ...','Добрый день! Хотим заказать ...'];" > apps/svc-enquiries/src/templates/messages.ts
+    git add apps/svc-enquiries/src/templates/messages.ts
+    ```
+
+---
+
+## ЭТАП 175. Сопоставление транзакций (узбекские провайдеры)
+
+- [ ] T-1750 | Нормализация callback-полей
+  - depends: [T-1060, T-1061, T-1062]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-payments/src/normalize
+    cat > apps/svc-payments/src/normalize/index.ts <<'TS'
+export const norm=(p:any)=>({ id:p.invoice_id||p.bill_id||p.id, amount:+(p.amount||p.total), status:p.status||'ok' });
+TS
+    git add apps/svc-payments/src/normalize/index.ts
+    ```
+
+---
+
+## ЭТАП 176. Контроль «скорости ответа» поставщика
+
+- [ ] T-1760 | Метрика response-time
+  - depends: [T-0091]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-catalog/src/metrics
+    echo "export const responseTime=(ms:number)=>ms;" > apps/svc-catalog/src/metrics/response.ts
+    git add apps/svc-catalog/src/metrics/response.ts
+    ```
+
+---
+
+## ЭТАП 177. Экспорт/импорт настроек пользователя
+
+- [ ] T-1770 | Бэкап настроек в JSON
+  - depends: []
+  - apply:
+    ```bash
+    mkdir -p apps/svc-auth/src/settings
+    echo "export const exportSettings=()=>({});" > apps/svc-auth/src/settings/export.ts
+    git add apps/svc-auth/src/settings/export.ts
+    ```
+
+---
+
+## ЭТАП 178. Поддержка KZ/KG/AZ страниц города
+
+- [ ] T-1780 | Шаблоны городов для регионов
+  - depends: [T-1130, T-0230]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-website/pages/vendors-kz apps/svc-website/pages/vendors-kg apps/svc-website/pages/vendors-az
+    echo "export default function City(){return 'kz-city';}" > apps/svc-website/pages/vendors-kz/[city].js
+    echo "export default function City(){return 'kg-city';}" > apps/svc-website/pages/vendors-kg/[city].js
+    echo "export default function City(){return 'az-city';}" > apps/svc-website/pages/vendors-az/[city].js
+    git add apps/svc-website/pages/vendors-*/[city].js
+    ```
+
+---
+
+## ЭТАП 179. Анти-спам: ограничение отправки заявок
+
+- [ ] T-1790 | Rate-limit заявок
+  - depends: [T-1170]
+  - apply:
+    ```bash
+    mkdir -p apps/svc-enquiries/src/rl
+    echo "export const enquiryLimit=5;" > apps/svc-enquiries/src/rl/policy.ts
+    git add apps/svc-enquiries/src/rl/policy.ts
+    ```
+
+---
+
+## ЭТАП 180. Финальный пуш уровня 3
+
+- [ ] T-1800 | Commit/push «Level 3»
+  - depends: [T-0005]
+  - apply:
+    ```bash
+    git add -A
+    git commit -m "Codex: Level-3 features 141–180 (semantic search, feature-store, online-learning stub, fraud graph, CDN variants, ops/DR/canary/SLO, churn, pay-by-link, TG, regional)"
+    git push origin codex || true
+    ```
+    ---
+
+## ЭТАП 181. DigitalOcean App Platform (Auto-Deploy)
+
+- [ ] T-0181 | Per-service package.json (build/start/start:migrate)
+  - depends: [T-0004, T-0010]
+  - apply:
+    ```bash
+    set -euo pipefail
+    SERVICES=("auth" "enquiries" "vendors" "catalog" "guests" "website" "admin" "analytics" "payments")
+    for s in "${SERVICES[@]}"; do
+      dir="apps/svc-$s"
+      mkdir -p "$dir"
+      if [ ! -f "$dir/package.json" ]; then
+        cat > "$dir/package.json" <<JSON
+{
+  "name": "svc-$(basename "$dir")",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo build-ok",
+    "start": "node src/main.js",
+    "start:migrate": "pnpm -C ../../packages/prisma run migrate:deploy && node src/main.js"
+  },
+  "dependencies": {}
+}
+JSON
+      fi
+    done
+    git add apps/svc-*/package.json
+    ```
+
+- [ ] T-0182 | DigitalOcean App Spec (infra/do/app.yaml) c автоподстановкой origin
+  - depends: [T-0181]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p infra/do
+    remote="$(git remote get-url origin)"
+    case "$remote" in
+      https://github.com/*) repo="${remote#https://github.com/}"; repo="${repo%.git}" ;;
+      git@github.com:*)     repo="${remote#git@github.com:}";    repo="${repo%.git}" ;;
+      *) echo "origin undefined: $remote" >&2; exit 1 ;;
+    esac
+
+    cat > infra/do/app.yaml <<YML
+name: weddingtech-uz
+services:
+  - name: svc-website
+    github:
+      repo: ${repo}
+      branch: main
+      deploy_on_push: true
+      source_dir: apps/svc-website
+    http_port: 8080
+    run_command: "pnpm start:migrate"
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+  - name: svc-enquiries
+    github:
+      repo: ${repo}
+      branch: main
+      deploy_on_push: true
+      source_dir: apps/svc-enquiries
+    http_port: 8080
+    run_command: "pnpm start:migrate"
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+YML
+
+    git add infra/do/app.yaml
+    ```
+
+- [ ] T-0183 | GitHub Action: Manual Deploy to DO App (`apps/{id}/deployments`)
+  - depends: [T-0182]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p .github/workflows
+    cat > .github/workflows/do-deploy.yml <<'YML'
+name: DO Deploy (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: 'DigitalOcean App ID'
+        required: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deployment
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+          APP_ID: ${{ github.event.inputs.app_id }}
+        run: |
+          set -e
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://api.digitalocean.com/v2/apps/${APP_ID}/deployments" \
+            -d '{}'
+YML
+    git add .github/workflows/do-deploy.yml
+    ```
+
+- [ ] T-0184 | GitHub Action: Lint `infra/do/app.yaml`
+  - depends: [T-0182]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p .github/workflows
+    cat > .github/workflows/do-appspec-lint.yml <<'YML'
+name: DO App Spec Lint
+on:
+  push:
+    branches: [ codex ]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate YAML
+        run: python - <<'PY'
+import yaml
+with open('infra/do/app.yaml','r',encoding='utf-8') as f:
+    yaml.safe_load(f)
+print("app.yaml OK")
+PY
+YML
+    git add .github/workflows/do-appspec-lint.yml
+    ```
+
+- [ ] T-0185 | Расширенный `/health`: признак доступности БД (`db:true|false`)
+  - depends: [T-0011, T-0004]
+  - apply:
+    ```bash
+    set -euo pipefail
+    SERVICES=("auth" "vendors" "enquiries" "catalog" "guests")
+    for s in "${SERVICES[@]}"; do
+      f="apps/svc-$s/src/main.js"
+      if [ -f "$f" ] && grep -q '"ok"' "$f"; then
+        awk '1; /"ok"/ && c==0 {print "    const db = true; // TODO: заменить stub на реальный ping БД"; c=1}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+        sed -i 's/JSON.stringify({status:"ok"})/JSON.stringify({status:"ok",db:typeof db!=="undefined"?!!db:false})/' "$f" || true
+      fi
+    done
+    git add apps/svc-*/src/main.js || true
+    ```
+
+- [ ] T-0186 | Скрипт «миграции на старте»
+  - depends: [T-0012]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p scripts
+    cat > scripts/start-with-migrations.sh <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+pnpm -C packages/prisma run migrate:deploy
+exec "$@"
+SH
+    chmod +x scripts/start-with-migrations.sh
+    git add scripts/start-with-migrations.sh
+    ```
+
+- [ ] T-0187 | DO Docs: one-click deploy (секреты/процедура)
+  - depends: [T-0183]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p docs/ops/do
+    cat > docs/ops/do/one-click-deploy.md <<'MD'
+# One-click deploy (DigitalOcean App Platform)
+1) Добавить `DO_API_TOKEN` в GitHub Secrets.
+2) Создать App из `infra/do/app.yaml` (deploy_on_push: main).
+3) В Actions запустить "DO Deploy (manual)" и указать APP ID.
+4) Проверить `/health` (<250 мс на холодном старте желательно).
+MD
+    git add docs/ops/do/one-click-deploy.md
+    ```
+
+---
+
+## ЭТАП 182. B2B & Bridebook Extensions
+
+- [ ] T-0188 | Enquiry workflow: состояния и валидация переходов
+  - depends: [T-0052, T-0091]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps/svc-enquiries/src/workflow
+    cat > apps/svc-enquiries/src/workflow/states.ts <<'TS'
+export const flow = ["NEW","QUOTED","CONTRACT_SIGNED","WON","LOST"] as const;
+export function canTransit(from:string,to:string){
+  const i=flow.indexOf(from as any), j=flow.indexOf(to as any);
+  if(i<0||j<0) return false;
+  if(to==="WON"||to==="LOST") return i>=flow.indexOf("CONTRACT_SIGNED");
+  return j===i+1;
+}
+TS
+    git add apps/svc-enquiries/src/workflow/states.ts
+    ```
+
+- [ ] T-0189 | Targeted enquiries (Premium)
+  - depends: [T-0188, T-0170]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps/svc-enquiries/src/types
+    cat > apps/svc-enquiries/src/types/targeted.ts <<'TS'
+export type EnquiryTier="FREE"|"TARGETED";
+export type TargetedPayload={budget:number;date:string;style?:string};
+TS
+    git add apps/svc-enquiries/src/types/targeted.ts
+    ```
+
+- [ ] T-0190 | Contract-based reviews: правило допуска
+  - depends: [T-0070, T-0350]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps/svc-enquiries/src/reviews
+    cat > apps/svc-enquiries/src/reviews/contract-verify.ts <<'TS'
+export const canReview=(enquiry:{status:string})=>["WON","CONTRACT_SIGNED"].includes(enquiry.status);
+TS
+    git add apps/svc-enquiries/src/reviews/contract-verify.ts
+    ```
+
+- [ ] T-0191 | Late availability: тип оффера для тойхан
+  - depends: [T-0051, T-0052]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps/svc-vendors/src/late
+    cat > apps/svc-vendors/src/late/index.ts <<'TS'
+export type LateOffer={vendorId:string,date:string,discount:number,expires:string};
+TS
+    git add apps/svc-vendors/src/late/index.ts
+    ```
+
+- [ ] T-0192 | Контент-тип 3D-туров (Matterport/custom)
+  - depends: [T-0270]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p packages/media/3d
+    cat > packages/media/3d/index.ts <<'TS'
+export type ThreeDTour={provider:"matterport"|"custom"; url:string; };
+TS
+    git add packages/media/3d/index.ts
+    ```
+
+- [ ] T-0193 | ROI метрики поставщика (просмотры → заявки → WON)
+  - depends: [T-0090]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps/svc-analytics/src/roi
+    cat > apps/svc-analytics/src/roi/vendor.ts <<'TS'
+export type VendorRoi={views:number,enquiries:number,won:number,conv:number};
+export const calc=(v:{views:number,enquiries:number,won:number}):VendorRoi=>({...v,conv:v.enquiries?v.won/v.enquiries:0});
+TS
+    git add apps/svc-analytics/src/roi/vendor.ts
+    ```
+
+- [ ] T-0194 | Ранжирование каталога: score()
+  - depends: [T-0053]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps/svc-catalog/src/rank
+    cat > apps/svc-catalog/src/rank/score.ts <<'TS'
+export function score({conv=0,rating=0,profile=0,calendar=0}:{conv:number,rating:number,profile:number,calendar:number}){
+  return 0.5*conv+0.2*rating+0.2*profile+0.1*calendar;
+}
+TS
+    git add apps/svc-catalog/src/rank/score.ts
+    ```
+
+- [ ] T-0195 | SMS (UZ Eskiz) — минимальный адаптер
+  - depends: [T-0121]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p packages/sms/adapters
+    cat > packages/sms/adapters/eskiz.ts <<'TS'
+export const eskiz={send:(to:string,text:string)=>({ok:true,to,text})};
+TS
+    git add packages/sms/adapters/eskiz.ts
+    ```
+
+- [ ] T-0196 | WCAG AA чек-лист
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p docs/a11y
+    cat > docs/a11y/wcag-aa.md <<'MD'
+# WCAG AA checklist
+- Контрастность ≥ AA
+- Видимый фокус
+- Alt-тексты
+- Клавиатурная навигация
+- Кликабельные зоны ≥ 44×44px
+MD
+    git add docs/a11y/wcag-aa.md
+    ```
+
+- [ ] T-0197 | SEO лендинги: города/категории
+  - depends: [T-0065]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p apps/svc-website/src/pages/seo
+    cat > apps/svc-website/src/pages/seo/index.ts <<'TS'
+export const cities=["Tashkent","Samarkand","Andijan","Namangan","Bukhara"];
+export const categories=["venues","catering","photo","video","music","decor"];
+TS
+    git add apps/svc-website/src/pages/seo/index.ts
+    ```
+
+---
+
+## ЭТАП 183. Ops / Compliance / Monitoring
+
+- [ ] T-0198 | Rate limiting (локальный nginx-прокси)
+  - depends: [T-0003]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p infra/local/nginx
+    cat > infra/local/nginx/nginx.conf <<'CONF'
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+server {
+  listen 8081;
+  location /api/ {
+    limit_req zone=api burst=20 nodelay;
+    proxy_pass http://localhost:3000;
+  }
+}
+CONF
+    git add infra/local/nginx/nginx.conf
+    ```
+
+- [ ] T-0199 | Очереди для импортов/экспортов (BullMQ stub)
+  - depends: [T-0040, T-0360]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p packages/queue
+    cat > packages/queue/index.ts <<'TS'
+export const enqueue=(name:string,payload:any)=>({ok:true,name,payload});
+TS
+    git add packages/queue/index.ts
+    ```
+
+- [ ] T-0200 | Бэкапы Postgres: памятка
+  - depends: [T-0011]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p docs/ops/backups
+    cat > docs/ops/backups/pg.md <<'MD'
+# Backups (Postgres)
+- Nightly pg_dump, хранить 7 дней.
+- Тест восстановления раз в 2 недели.
+- Опционально: WAL archiving.
+MD
+    git add docs/ops/backups/pg.md
+    ```
+
+- [ ] T-0201 | Data retention / экспорт по запросу
+  - depends: [T-0141]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p docs/legal
+    cat > docs/legal/data-retention.md <<'MD'
+# Data Retention
+- Удаление персональных данных по запросу: SLA 7 дней.
+- Экспорт данных: JSON/CSV по запросу пользователя.
+- Хранение логов: 30 дней.
+MD
+    git add docs/legal/data-retention.md
+    ```
+
+- [ ] T-0202 | PII-safe логирование (маскирование)
+  - depends: [T-0141]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p docs/ops/logging
+    cat > docs/ops/logging/pii.md <<'MD'
+# Логирование и PII
+- Маскировать телефоны/email в логах и алертах.
+- Не писать содержимое пользовательских сообщений в структурные логи.
+- Ротация логов: 7 дней.
+MD
+    git add docs/ops/logging/pii.md
+    ```
+
+- [ ] T-0203 | Synthetic health-check (manual workflow)
+  - depends: [T-0185]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p .github/workflows
+    cat > .github/workflows/health-check.yml <<'YML'
+name: Health Check (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Health URL'
+        required: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: curl /health
+        run: |
+          set -e
+          curl -sS --max-time 5 "${{ github.event.inputs.url }}"
+YML
+    git add .github/workflows/health-check.yml
+    ```
+
+- [ ] T-0204 | Uptime мониторинг: гайд (UptimeRobot/BetterStack)
+  - depends: []
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p docs/ops/alerts
+    cat > docs/ops/alerts/uptime.md <<'MD'
+# Аптайм-мониторинг
+- Регистрация /health в UptimeRobot или BetterStack.
+- Порог тревоги: 2 фейла подряд, интервал 60 сек.
+- Каналы уведомлений: email, Telegram.
+MD
+    git add docs/ops/alerts/uptime.md
+    ```
+
+- [ ] T-0205 | Lighthouse (manual) для публичного сайта
+  - depends: [T-0060]
+  - apply:
+    ```bash
+    set -euo pipefail
+    mkdir -p .github/workflows
+    cat > .github/workflows/lighthouse.yml <<'YML'
+name: Lighthouse (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Public URL'
+        required: true
+jobs:
+  lh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install lighthouse
+        run: npm i -g lighthouse
+      - name: Run lighthouse
+        run: lighthouse "${{ github.event.inputs.url }}" --quiet --chrome-flags="--headless" --only-categories=performance,accessibility,seobest-practices
+YML
+    git add .github/workflows/lighthouse.yml
+    ```
+
