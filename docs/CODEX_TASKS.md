@@ -519,7 +519,7 @@ TS
 
 ## ЭТАП 11. Платежи Uzcard/Humo
 
-- [ ] T-0110 | Провайдер Uzcard (инициализация API)
+- [x] T-0110 | Провайдер Uzcard (инициализация API)
   - depends: [T-0002]
   - apply:
     ```bash
