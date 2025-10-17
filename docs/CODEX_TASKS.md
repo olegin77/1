@@ -564,7 +564,7 @@ TS
 
 ## ЭТАП 12. Уведомления: email/SMS/Push
 
-- [ ] T-0120 | Пакет `@wt/mailer` (+ mjml шаблон)
+- [x] T-0120 | Пакет `@wt/mailer` (+ mjml шаблон)
   - depends: [T-0002]
   - apply:
     ```bash
