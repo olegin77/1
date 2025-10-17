@@ -2034,7 +2034,7 @@ TS
     git add apps/svc-payments/providers/uzpay.ts
     ```
 
-- [ ] T-1061 | Payme провайдер
+- [x] T-1061 | Payme провайдер
   - depends: [T-0112]
   - apply:
     ```bash
