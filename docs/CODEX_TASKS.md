@@ -540,7 +540,7 @@ TS
     git add apps/svc-payments/providers/humo.ts
     ```
 
-- [ ] T-0112 | Абстракция платежей (router)
+- [x] T-0112 | Абстракция платежей (router)
   - depends: [T-0110,T-0111]
   - apply:
     ```bash
