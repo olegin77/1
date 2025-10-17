@@ -2809,7 +2809,7 @@ TS
 
 ## ЭТАП 155. Контроль дубликатов поставщиков
 
-- [ ] T-1550 | Эвристика duplicate-detector
+- [x] T-1550 | Эвристика duplicate-detector
   - depends: [T-0530]
   - apply:
     ```bash
