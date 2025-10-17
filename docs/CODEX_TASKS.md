@@ -2614,7 +2614,7 @@ TS
     git add packages/features/index.ts
     ```
 
-- [ ] T-1421 | Экспорт фич в snapshot
+- [x] T-1421 | Экспорт фич в snapshot
   - depends: [T-1420]
   - apply:
     ```bash
