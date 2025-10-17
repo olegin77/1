@@ -71,7 +71,7 @@ ENV
     git add .env.example
     ```
 
-- [ ] T-0003 | Локальная инфраструктура Docker (Postgres/Redis/MinIO)
+- [x] T-0003 | Локальная инфраструктура Docker (Postgres/Redis/MinIO)
   - depends: [T-0001]
   - apply:
     ```bash
@@ -95,7 +95,7 @@ YML
     git add infra/local/docker-compose.yml
     ```
 
-- [ ] T-0004 | Базовые сервисы `/health` (скелеты)
+- [x] T-0004 | Базовые сервисы `/health` (скелеты)
   - depends: [T-0001]
   - apply:
     ```bash
@@ -111,7 +111,7 @@ JS
     git add apps/svc-*/src/main.js
     ```
 
-- [ ] T-0005 | CI workflow для ветки `codex` (lint/test/build)
+- [x] T-0005 | CI workflow для ветки `codex` (lint/test/build)
   - depends: [T-0001]
   - apply:
     ```bash
@@ -135,7 +135,7 @@ YML
     git add .github/workflows/ci.yml
     ```
 
-- [ ] T-0006 | PR guard: проверка наличия docs/CODEX_TASKS.md
+- [x] T-0006 | PR guard: проверка наличия docs/CODEX_TASKS.md
   - depends: [T-0005]
   - apply:
     ```bash
@@ -157,7 +157,7 @@ YML
 
 ## ЭТАП 1. База данных и Prisma (ядро домена)
 
-- [ ] T-0010 | Пакет `@wt/prisma` и зависимости
+- [x] T-0010 | Пакет `@wt/prisma` и зависимости
   - depends: [T-0001]
   - apply:
     ```bash
