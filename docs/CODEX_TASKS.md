@@ -2602,7 +2602,7 @@ TS
 
 ## ЭТАП 142. Feature Store для ML
 
-- [ ] T-1420 | Пакет `@wt/features` (фичи и схемы)
+- [x] T-1420 | Пакет `@wt/features` (фичи и схемы)
   - depends: [T-1011]
   - apply:
     ```bash
