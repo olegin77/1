@@ -622,7 +622,7 @@ JSON
     git add .eslintrc.json tsconfig.json
     ```
 
-- [ ] T-0141 | Экспорт данных пользователя
+- [x] T-0141 | Экспорт данных пользователя
   - depends: [T-0011]
   - apply:
     ```bash
