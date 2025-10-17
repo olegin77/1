@@ -301,7 +301,7 @@ MDX
 
 ## ЭТАП 3. Аутентификация и роли
 
-- [ ] T-0030 | svc-auth: /health, /auth/register, /auth/login
+- [x] T-0030 | svc-auth: /health, /auth/register, /auth/login
   - depends: [T-0004, T-0011]
   - apply:
     ```bash
