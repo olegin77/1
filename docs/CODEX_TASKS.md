@@ -111,7 +111,7 @@ JS
     git add apps/svc-*/src/main.js
     ```
 
-- [ ] T-0005 | CI workflow для ветки `codex` (lint/test/build)
+- [x] T-0005 | CI workflow для ветки `codex` (lint/test/build)
   - depends: [T-0001]
   - apply:
     ```bash
