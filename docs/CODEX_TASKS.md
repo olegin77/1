@@ -490,7 +490,7 @@ TS
     git add apps/svc-analytics/src/index.ts
     ```
 
-- [ ] T-0091 | События AuditEvent (хук)
+- [x] T-0091 | События AuditEvent (хук)
   - depends: [T-0011,T-0090]
   - apply:
     ```bash
