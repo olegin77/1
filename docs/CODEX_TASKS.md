@@ -71,7 +71,7 @@ ENV
     git add .env.example
     ```
 
-- [ ] T-0003 | Локальная инфраструктура Docker (Postgres/Redis/MinIO)
+- [x] T-0003 | Локальная инфраструктура Docker (Postgres/Redis/MinIO)
   - depends: [T-0001]
   - apply:
     ```bash
