@@ -171,7 +171,7 @@ JSON
     git add packages/prisma/package.json
     ```
 
-- [ ] T-0011 | `schema.prisma` (полная MVP-схема)
+- [x] T-0011 | `schema.prisma` (полная MVP-схема)
   - depends: [T-0010]
   - apply:
     ```bash
