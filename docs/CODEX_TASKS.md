@@ -2709,7 +2709,7 @@ MD
 
 ## ЭТАП 148. Canary-релизы
 
-- [ ] T-1480 | Стратегия canary (docs)
+- [x] T-1480 | Стратегия canary (docs)
   - depends: [T-0005]
   - apply:
     ```bash
