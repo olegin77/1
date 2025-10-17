@@ -416,7 +416,7 @@ TS
 
 ## ЭТАП 6. Сайт пары, публичный RSVP, QR-коды
 
-- [ ] T-0060 | Next.js скелет `svc-website` (/w/[slug])
+- [x] T-0060 | Next.js скелет `svc-website` (/w/[slug])
   - depends: [T-0004]
   - apply:
     ```bash
