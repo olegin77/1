@@ -171,7 +171,7 @@ JSON
     git add packages/prisma/package.json
     ```
 
-- [ ] T-0011 | `schema.prisma` (полная MVP-схема)
+- [x] T-0011 | `schema.prisma` (полная MVP-схема)
   - depends: [T-0010]
   - apply:
     ```bash
@@ -301,7 +301,7 @@ MDX
 
 ## ЭТАП 3. Аутентификация и роли
 
-- [ ] T-0030 | svc-auth: /health, /auth/register, /auth/login
+- [x] T-0030 | svc-auth: /health, /auth/register, /auth/login
   - depends: [T-0004, T-0011]
   - apply:
     ```bash
@@ -374,7 +374,7 @@ TS
 
 ## ЭТАП 5. Маркетплейс поставщиков (поиск/фильтры/бронь/календарь)
 
-- [ ] T-0050 | Индексы поиска и фильтры
+- [x] T-0050 | Индексы поиска и фильтры
   - depends: [T-0011]
   - apply:
     ```bash
@@ -416,7 +416,7 @@ TS
 
 ## ЭТАП 6. Сайт пары, публичный RSVP, QR-коды
 
-- [ ] T-0060 | Next.js скелет `svc-website` (/w/[slug])
+- [x] T-0060 | Next.js скелет `svc-website` (/w/[slug])
   - depends: [T-0004]
   - apply:
     ```bash
@@ -446,7 +446,7 @@ TS
 
 ## ЭТАП 7. Отзывы и модерация
 
-- [ ] T-0070 | Модерация отзывов (pipeline)
+- [x] T-0070 | Модерация отзывов (pipeline)
   - depends: [T-0011]
   - apply:
     ```bash
@@ -481,7 +481,7 @@ TS
 
 ## ЭТАП 9. B2B-аналитика, события и сигналы
 
-- [ ] T-0090 | svc-analytics скелет
+- [x] T-0090 | svc-analytics скелет
   - depends: [T-0004]
   - apply:
     ```bash
@@ -490,7 +490,7 @@ TS
     git add apps/svc-analytics/src/index.ts
     ```
 
-- [ ] T-0091 | События AuditEvent (хук)
+- [x] T-0091 | События AuditEvent (хук)
   - depends: [T-0011,T-0090]
   - apply:
     ```bash
@@ -519,7 +519,7 @@ TS
 
 ## ЭТАП 11. Платежи Uzcard/Humo
 
-- [ ] T-0110 | Провайдер Uzcard (инициализация API)
+- [x] T-0110 | Провайдер Uzcard (инициализация API)
   - depends: [T-0002]
   - apply:
     ```bash
@@ -530,7 +530,7 @@ TS
     git add apps/svc-payments/providers/uzcard.ts
     ```
 
-- [ ] T-0111 | Провайдер Humo (инициализация API)
+- [x] T-0111 | Провайдер Humo (инициализация API)
   - depends: [T-0002]
   - apply:
     ```bash
@@ -540,7 +540,7 @@ TS
     git add apps/svc-payments/providers/humo.ts
     ```
 
-- [ ] T-0112 | Абстракция платежей (router)
+- [x] T-0112 | Абстракция платежей (router)
   - depends: [T-0110,T-0111]
   - apply:
     ```bash
@@ -587,7 +587,7 @@ TS
 
 ## ЭТАП 13. SEO/контент/блог
 
-- [ ] T-0130 | Sitemap генератор
+- [x] T-0130 | Sitemap генератор
   - depends: [T-0060]
   - apply:
     ```bash
@@ -622,7 +622,7 @@ JSON
     git add .eslintrc.json tsconfig.json
     ```
 
-- [ ] T-0141 | Экспорт данных пользователя
+- [x] T-0141 | Экспорт данных пользователя
   - depends: [T-0011]
   - apply:
     ```bash
@@ -635,7 +635,7 @@ JSON
 
 ## ЭТАП 15. K6 перф-профили
 
-- [ ] T-0150 | k6 каталог/енквайри смоук
+- [x] T-0150 | k6 каталог/енквайри смоук
   - depends: [T-0050,T-0030]
   - apply:
     ```bash
@@ -829,7 +829,7 @@ JSON
 
 ## ЭТАП 27. Медиа-хранилище (MinIO)
 
-- [ ] T-0270 | Абстракция S3-совместимого стораджа
+- [x] T-0270 | Абстракция S3-совместимого стораджа
   - depends: [T-0003]
   - apply:
     ```bash
@@ -855,7 +855,7 @@ JSON
 
 ## ЭТАП 29. Инвойсы/оплаты
 
-- [ ] T-0290 | Модель/скелет API инвойсов
+- [x] T-0290 | Модель/скелет API инвойсов
   - depends: [T-0112,T-0011]
   - apply:
     ```bash
@@ -2058,7 +2058,7 @@ TS
 
 ## ЭТАП 107. GraphQL-шлюз
 
-- [ ] T-1070 | Gateway (скелет)
+- [x] T-1070 | Gateway (скелет)
   - depends: [T-0004]
   - apply:
     ```bash
@@ -2447,7 +2447,7 @@ TS
 
 ## ЭТАП 132. Тонкая настройка robots.txt
 
-- [ ] T-1320 | robots.txt
+- [x] T-1320 | robots.txt
   - depends: [T-0130]
   - apply:
     ```bash
@@ -2464,7 +2464,7 @@ TXT
 
 ## ЭТАП 133. Архив заявок и GDPR-удаление
 
-- [ ] T-1330 | Архивация/удаление
+- [x] T-1330 | Архивация/удаление
   - depends: [T-0141]
   - apply:
     ```bash
@@ -2477,7 +2477,7 @@ TXT
 
 ## ЭТАП 134. Автогенерация OpenAPI/GraphQL схем (скелет)
 
-- [ ] T-1340 | Схемы контуров
+- [x] T-1340 | Схемы контуров
   - depends: [T-1070]
   - apply:
     ```bash
@@ -2490,7 +2490,7 @@ TXT
 
 ## ЭТАП 135. Приём файлов больших размеров (chunked)
 
-- [ ] T-1350 | Чанк-загрузка (stub)
+- [x] T-1350 | Чанк-загрузка (stub)
   - depends: [T-0270]
   - apply:
     ```bash
@@ -2503,7 +2503,7 @@ TXT
 
 ## ЭТАП 136. Биллинг для маркетплейса (комиссия платформы)
 
-- [ ] T-1360 | Комиссия и отчёт
+- [x] T-1360 | Комиссия и отчёт
   - depends: [T-0290]
   - apply:
     ```bash
@@ -2518,7 +2518,7 @@ TS
 
 ## ЭТАП 137. Логи аудита безопасности
 
-- [ ] T-1370 | Security-аудит
+- [x] T-1370 | Security-аудит
   - depends: [T-0091]
   - apply:
     ```bash
@@ -2531,7 +2531,7 @@ TS
 
 ## ЭТАП 138. Стресс-профили k6 (каталог/поиск)
 
-- [ ] T-1380 | k6 search/stress
+- [x] T-1380 | k6 search/stress
   - depends: [T-0150]
   - apply:
     ```bash
@@ -2545,7 +2545,7 @@ JS
 
 ## ЭТАП 139. Монитор качества отзывов (порог публикации)
 
-- [ ] T-1390 | Порог публикации
+- [x] T-1390 | Порог публикации
   - depends: [T-0070]
   - apply:
     ```bash
